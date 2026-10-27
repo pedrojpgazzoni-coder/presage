@@ -16,14 +16,18 @@ function tone(odds: number) {
   return "even";
 }
 
-/** A chance nos quatro níveis, com os dois lados nivelados. */
-function Niveis({ pontos }: { pontos: LevelOdds[] }) {
+/** A chance nas três fases do jogo, com os dois lados no mesmo nível. */
+function Niveis({ pontos, grande = false }: { pontos: LevelOdds[]; grande?: boolean }) {
   if (!pontos || pontos.length === 0) return null;
   return (
-    <div className="niveis">
+    <div className={`niveis ${grande ? "niveis-grande" : ""}`}>
       {pontos.map((p) => (
         <span key={p.level} className={tone(p.odds)}>
-          <small>nv {p.level}</small>
+          {/* O nome da fase é como se pensa o jogo; o nível fica junto para o
+              rótulo não virar vago. */}
+          <small>
+            {p.phase} <i>nv {p.level}</i>
+          </small>
           {pct(p.odds)}
         </span>
       ))}
@@ -134,6 +138,32 @@ export default function LaneAnalysis({ report, staticData }: Props) {
         </p>
       )}
 
+      {report.team && (
+        <div className="time-geral">
+          <div className="time-head">
+            <span className="label">Os cinco contra os cinco</span>
+            <b className={tone(report.team.odds)}>{pct(report.team.odds)}</b>
+          </div>
+          <div className="time-faces">
+            {report.team.ours.map((id) => (
+              <Face key={`t${id}`} id={id} staticData={staticData} />
+            ))}
+            <span className="lane-vs">x</span>
+            {report.team.theirs.map((id) => (
+              <Face key={`e${id}`} id={id} staticData={staticData} />
+            ))}
+          </div>
+          <Niveis pontos={report.team.byLevel} grande />
+          {report.team.reasons.length > 0 && (
+            <ul className="lane-why">
+              {report.team.reasons.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <div className="lane-list">
         {report.lanes.map((lane) => (
           <LaneRow key={lane.lane} lane={lane} staticData={staticData} />
@@ -143,10 +173,10 @@ export default function LaneAnalysis({ report, staticData }: Props) {
       {/* A ressalva que não pode faltar: a curva é de atributos, não de
           habilidades. O motor não sabe que alguém ganhou a suprema no 6. */}
       <p className="faint">
-        As linhas <b>nv 3 · 6 · 11 · 16</b> comparam os dois no mesmo nível, com
-        os itens que cada um tem. Elas mostram o crescimento de vida, armadura,
-        resistência e dano por nível — não as habilidades: o motor não sabe que
-        alguém ganha a suprema no 6.
+        <b>Early · mid · late</b> comparam os dois lados no mesmo nível (3, 6 e
+        11), com os itens que cada um tem. Elas mostram o crescimento de vida,
+        armadura, resistência e dano por nível — não as habilidades: o motor
+        não sabe que alguém ganha a suprema no 6.
       </p>
 
       {report.skirmishes.length > 0 && (

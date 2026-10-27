@@ -13,7 +13,9 @@
 
 use serde::Serialize;
 
-use super::build::{loadout, side_power, skirmish_odds, Combatant};
+use super::build::{
+    incoming_physical_share, loadout, side_power, skirmish_odds, Combatant,
+};
 use super::champion::{ChampionIndex, Role};
 use super::items::ItemIndex;
 use super::stats::{shrunk_delta, StatsStore};
@@ -35,9 +37,20 @@ const CEILING: f64 = 0.72;
 
 const MAX_REASONS: usize = 3;
 
-/// Os níveis em que o jogo muda de cara: todas as básicas, a suprema, a
-/// segunda carga dela, a terceira.
-pub const BREAKPOINTS: [u8; 4] = [3, 6, 11, 16];
+/// As três fases do jogo, com o nível que representa cada uma: todas as
+/// básicas no 3, a suprema no 6, e a segunda carga dela no 11 — daí para
+/// frente a diferença entre campeões já está desenhada.
+pub const BREAKPOINTS: [u8; 3] = [3, 6, 11];
+
+/// O nome da fase, que é como as pessoas pensam o jogo. O nível aparece junto
+/// na interface para o número não virar rótulo vago.
+pub fn phase_label(level: u8) -> &'static str {
+    match level {
+        0..=4 => "early game",
+        5..=9 => "mid game",
+        _ => "late game",
+    }
+}
 
 /// Quem ganha num nível, com os dois lados nivelados.
 ///
@@ -53,6 +66,8 @@ pub const BREAKPOINTS: [u8; 4] = [3, 6, 11, 16];
 #[serde(rename_all = "camelCase")]
 pub struct LevelOdds {
     pub level: u8,
+    /// `early game`, `mid game`, `late game`.
+    pub phase: &'static str,
     pub odds: f64,
 }
 
@@ -79,6 +94,7 @@ fn curve(
         .iter()
         .map(|&level| LevelOdds {
             level,
+            phase: phase_label(level),
             odds: skirmish_odds(
                 &at_level(ours, level),
                 &at_level(theirs, level),
@@ -364,6 +380,80 @@ pub fn skirmishes(
             })
         })
         .collect()
+}
+
+/// Abaixo disto a comparação de time é cedo demais para dizer alguma coisa.
+const MIN_TEAM: usize = 3;
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamOutlook {
+    pub ours: Vec<i64>,
+    pub theirs: Vec<i64>,
+    /// Com os níveis e itens de agora.
+    pub odds: f64,
+    /// E nivelados, nos níveis 3, 6, 11 e 16.
+    pub by_level: Vec<LevelOdds>,
+    pub reasons: Vec<String>,
+}
+
+/// Os cinco contra os cinco.
+///
+/// Só compara lados do mesmo tamanho. Num draft pela metade, dizer que os seus
+/// quatro ganham dos três deles é verdade trivial e leitura errada — o que
+/// falta escolher é justamente o que decide.
+pub fn team_outlook(
+    allies: &[Lineup],
+    enemies: &[Lineup],
+    champions: &ChampionIndex,
+    items: &ItemIndex,
+) -> Option<TeamOutlook> {
+    if allies.len() != enemies.len() || allies.len() < MIN_TEAM {
+        return None;
+    }
+
+    let ours: Vec<Combatant> = allies.iter().map(|l| l.combatant.clone()).collect();
+    let theirs: Vec<Combatant> = enemies.iter().map(|l| l.combatant.clone()).collect();
+
+    let mut reasons = skirmish_reasons(&ours, &theirs, champions, items);
+
+    // A mistura de dano decide o que o outro lado compra. Um time de um tipo
+    // só é resolvido com um item.
+    let meu_fisico = incoming_physical_share(&ours, champions, items);
+    let deles_fisico = incoming_physical_share(&theirs, champions, items);
+
+    // 80/20 e não 85/15: um time "todo AP" ainda bate de básico, e na prática
+    // fica perto de 20% de dano físico em vez de zero. Exigir mais que isso
+    // fazia a observação nunca aparecer.
+    const TORTO: f64 = 0.80;
+
+    if deles_fisico >= TORTO {
+        reasons.push(format!(
+            "O dano deles é {:.0}% físico: armadura resolve quase tudo",
+            deles_fisico * 100.0
+        ));
+    } else if deles_fisico <= 1.0 - TORTO {
+        reasons.push(format!(
+            "O dano deles é {:.0}% mágico: resistência mágica resolve quase tudo",
+            (1.0 - deles_fisico) * 100.0
+        ));
+    }
+
+    if meu_fisico >= TORTO {
+        reasons.push("O time de vocês é quase todo físico, e isso é fácil de contra-itemizar".into());
+    } else if meu_fisico <= 1.0 - TORTO {
+        reasons.push("O time de vocês é quase todo mágico, e isso é fácil de contra-itemizar".into());
+    }
+
+    reasons.truncate(MAX_REASONS);
+
+    Some(TeamOutlook {
+        odds: skirmish_odds(&ours, &theirs, champions, items),
+        by_level: curve(&ours, &theirs, champions, items),
+        ours: ours.iter().map(|c| c.champion_id).collect(),
+        theirs: theirs.iter().map(|c| c.champion_id).collect(),
+        reasons,
+    })
 }
 
 /// Dentro desta janela o objetivo já manda na decisão de brigar.
@@ -1031,6 +1121,90 @@ mod tests {
         for (a, b) in armado[0].by_level.iter().zip(nu[0].by_level.iter()) {
             assert!(a.odds > b.odds, "nível {}", a.level);
         }
+    }
+
+    #[test]
+    fn as_fases_tem_nome_e_cobrem_toda_a_faixa() {
+        assert_eq!(phase_label(3), "early game");
+        assert_eq!(phase_label(6), "mid game");
+        assert_eq!(phase_label(11), "late game");
+        assert_eq!(phase_label(18), "late game");
+        assert_eq!(phase_label(1), "early game");
+
+        // Cada ponto da curva sai com a fase dele junto.
+        let out = lane_outlooks(
+            &[lineup(Role::Mid, 1)],
+            &[lineup(Role::Mid, 2)],
+            &champions(),
+            &items(),
+            &NoStats,
+        );
+        let fases: Vec<&str> = out[0].by_level.iter().map(|p| p.phase).collect();
+        assert_eq!(fases, vec!["early game", "mid game", "late game"]);
+    }
+
+    #[test]
+    fn o_time_completo_rende_um_score_geral() {
+        let (mine, theirs) = time_completo();
+        let t = team_outlook(&mine, &theirs, &champions(), &items()).unwrap();
+
+        assert_eq!(t.ours.len(), 5);
+        assert_eq!(t.theirs.len(), 5);
+        assert!((0.0..=1.0).contains(&t.odds));
+        assert_eq!(t.by_level.len(), BREAKPOINTS.len());
+    }
+
+    #[test]
+    fn lados_de_tamanhos_diferentes_nao_viram_score() {
+        // Quatro contra três não é leitura: o que falta escolher é o que
+        // decide, e "seus quatro ganham dos três deles" é verdade trivial.
+        let (mine, mut theirs) = time_completo();
+        theirs.pop();
+
+        assert!(team_outlook(&mine, &theirs, &champions(), &items()).is_none());
+    }
+
+    #[test]
+    fn draft_no_comeco_e_cedo_demais_para_score_de_time() {
+        let (mine, theirs) = time_completo();
+        assert!(team_outlook(&mine[..2], &theirs[..2], &champions(), &items()).is_none());
+        assert!(team_outlook(&mine[..3], &theirs[..3], &champions(), &items()).is_some());
+    }
+
+    #[test]
+    fn o_score_de_time_e_simetrico() {
+        let (mine, theirs) = time_completo();
+        let idx = champions();
+        let it = items();
+
+        let a = team_outlook(&mine, &theirs, &idx, &it).unwrap();
+        let b = team_outlook(&theirs, &mine, &idx, &it).unwrap();
+
+        assert!((a.odds + b.odds - 1.0).abs() < 1e-9);
+        for (x, y) in a.by_level.iter().zip(b.by_level.iter()) {
+            assert!((x.odds + y.odds - 1.0).abs() < 1e-9, "nível {}", x.level);
+        }
+    }
+
+    #[test]
+    fn time_de_um_tipo_de_dano_so_e_apontado() {
+        // Cinco magos contra cinco magos: os dois lados são fáceis de
+        // contra-itemizar, e isso é informação de draft.
+        let magos: Vec<Lineup> = [Role::Top, Role::Jungle, Role::Mid, Role::Bot, Role::Support]
+            .iter()
+            .map(|&r| lineup(r, 1))
+            .collect();
+        let outros: Vec<Lineup> = [Role::Top, Role::Jungle, Role::Mid, Role::Bot, Role::Support]
+            .iter()
+            .map(|&r| lineup(r, 2))
+            .collect();
+
+        let t = team_outlook(&magos, &outros, &champions(), &items()).unwrap();
+        assert!(
+            t.reasons.iter().any(|r| r.contains("mágico") || r.contains("físico")),
+            "{:?}",
+            t.reasons
+        );
     }
 
     #[test]

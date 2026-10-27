@@ -1775,3 +1775,61 @@ h3 {
   color: var(--dim);
   line-height: 1.45;
 }
+
+/* Rota que ja tem pool montada fica destacada no cartao. */
+.role-cards button.com-pool {
+  border-color: var(--line);
+  background: var(--rise);
+}
+
+.role-cards em {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mint);
+  border: 1px solid rgba(61, 220, 151, 0.35);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+/* ---- score do time inteiro ---- */
+
+.time-geral {
+  background: var(--rise);
+  border: 1px solid var(--halo-edge);
+  border-radius: 9px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.time-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.time-head b {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-faces {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 10px 0 4px;
+  flex-wrap: wrap;
+}
+
+.niveis-grande span {
+  padding: 8px 4px;
+  font-size: 14px;
+}
+
+/* O nome da fase manda; o nivel vai junto so para o rotulo nao ficar vago. */
+.niveis small i {
+  font-style: normal;
+  opacity: 0.6;
+}

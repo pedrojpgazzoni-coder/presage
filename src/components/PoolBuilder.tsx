@@ -26,9 +26,11 @@ const ALVO: Record<Exclude<Tier, "extra">, number> = { core: 2, situational: 3 }
 type Passo = "rota" | "core" | "situational" | "fechar" | "revisao";
 
 export default function PoolBuilder({ pool, staticData, onChange, onSuggest }: Props) {
-  const inicial = pool.entries[0]?.role ?? null;
-  const [role, setRole] = useState<Role | null>(inicial);
-  const [passo, setPasso] = useState<Passo>(inicial ? "revisao" : "rota");
+  // Abrir o Pool sempre começa pela rota, com ou sem pool montada: é a
+  // pergunta que organiza todo o resto, e os cartões já mostram o que cada
+  // rota tem.
+  const [role, setRole] = useState<Role | null>(null);
+  const [passo, setPasso] = useState<Passo>("rota");
   const [search, setSearch] = useState("");
   const [buracos, setBuracos] = useState<Gap[]>([]);
   const [candidatos, setCandidatos] = useState<PoolCandidate[] | null>(null);
@@ -87,8 +89,13 @@ export default function PoolBuilder({ pool, staticData, onChange, onSuggest }: P
   function escolherRota(proxima: Role) {
     setRole(proxima);
     setSearch("");
-    const jaTem = pool.entries.some((entry) => entry.role === proxima);
-    setPasso(jaTem ? "revisao" : "core");
+    // Sempre pelos passos, mesmo com a rota já montada.
+    //
+    // Antes, uma rota com um campeão só já pulava para a revisão — e aí os
+    // três passos ficavam inalcançáveis para sempre, porque todo mundo
+    // escolhe o primeiro campeão em algum momento. Os passos mostram o que já
+    // está escolhido nos lugares, então revisitar é barato.
+    setPasso("core");
   }
 
   // ---- passo 1: a rota ----
@@ -104,11 +111,26 @@ export default function PoolBuilder({ pool, staticData, onChange, onSuggest }: P
         </div>
         <div className="role-cards">
           {ROLES.map((item) => {
-            const quantos = pool.entries.filter((entry) => entry.role === item.id).length;
+            const daRota = pool.entries.filter((entry) => entry.role === item.id);
+            const conta = (tier: Tier) => daRota.filter((e) => e.tier === tier).length;
+            const completa = conta("core") >= ALVO.core && conta("situational") >= ALVO.situational;
+
             return (
-              <button type="button" key={item.id} onClick={() => escolherRota(item.id)}>
+              <button
+                type="button"
+                key={item.id}
+                className={daRota.length > 0 ? "com-pool" : ""}
+                onClick={() => escolherRota(item.id)}
+              >
                 <b>{item.label}</b>
-                <small>{quantos > 0 ? `${quantos} escolhidos` : "vazia"}</small>
+                {/* Quantos em cada tier, e não só o total: "1 escolhidos" não
+                    diz se falta core ou situacional. */}
+                <small>
+                  {daRota.length === 0
+                    ? "vazia"
+                    : `${conta("core")}/${ALVO.core} core · ${conta("situational")}/${ALVO.situational} situacionais`}
+                </small>
+                {completa && <em>pronta</em>}
               </button>
             );
           })}
@@ -238,7 +260,7 @@ export default function PoolBuilder({ pool, staticData, onChange, onSuggest }: P
       <div className="builder">
         <div className="wizard-head">
           <p className="eyebrow">{rotulo} · passo 4 de 4</p>
-          <h2>O último, para fechar o que falta</h2>
+          <h2>Escolha um destes</h2>
           {buracos.length > 0 ? (
             <p className="muted">
               Pelos cinco que você escolheu: {buracos.map((g) => GAP_TEXTO[g]).join(" · ")}.

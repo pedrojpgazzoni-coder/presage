@@ -29,6 +29,9 @@ const DRAFT_ORDER: [Role; 5] = [Role::Top, Role::Jungle, Role::Mid, Role::Bot, R
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LaneReport {
+    /// Os cinco contra os cinco. `None` enquanto os lados não estão do mesmo
+    /// tamanho.
+    pub team: Option<lanes::TeamOutlook>,
     pub lanes: Vec<LaneOutlook>,
     pub skirmishes: Vec<Skirmish>,
     /// `draft` ou `partida`.
@@ -126,6 +129,7 @@ pub fn report(
     }
 
     Some(LaneReport {
+        team: lanes::team_outlook(&ours, &theirs, champions, items),
         lanes: lanes::lane_outlooks(&ours, &theirs, champions, items, store),
         skirmishes: lanes::skirmishes(&ours, &theirs, champions, items),
         source,

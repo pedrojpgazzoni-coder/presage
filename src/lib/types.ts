@@ -132,7 +132,17 @@ export interface ItemSuggestion {
 
 export interface LevelOdds {
   level: number;
+  /** "early game", "mid game", "late game". */
+  phase: string;
   odds: number;
+}
+
+export interface TeamOutlook {
+  ours: number[];
+  theirs: number[];
+  odds: number;
+  byLevel: LevelOdds[];
+  reasons: string[];
 }
 
 export interface LaneOutlook {
@@ -174,6 +184,8 @@ export interface SkirmishFocus {
 }
 
 export interface LaneReport {
+  /** Os cinco contra os cinco. null enquanto os lados têm tamanhos diferentes. */
+  team: TeamOutlook | null;
   lanes: LaneOutlook[];
   skirmishes: Skirmish[];
   source: "draft" | "partida";
