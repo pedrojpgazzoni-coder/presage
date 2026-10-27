@@ -274,7 +274,13 @@
     { rota: "SUP", eu: "Thresh", ele: "Lulu", p: 0.62, niveis: [0.58, 0.63, 0.64, 0.6], por: "Vence Lulu na rota (+4.0pp, n=1450)" },
   ];
 
-  const NIVEIS = [3, 6, 11, 16];
+  // As três fases, com o nível que representa cada uma. A última leva "+":
+  // o late game não acaba no 11, começa nele.
+  const FASES = [
+    { nome: "early game", nivel: "nv 3" },
+    { nome: "mid game", nivel: "nv 6" },
+    { nome: "late game", nivel: "nv 11+" },
+  ];
 
   const BRIGAS = [
     {
@@ -339,9 +345,10 @@
         <div class="bar"><span class="${cor(r.p)}" style="width:${Math.round(r.p * 100)}%"></span></div>
         <div class="niveis">
           ${r.niveis
+            .slice(0, FASES.length)
             .map(
               (p, i) =>
-                `<span class="${cor(p)}"><small>nv ${NIVEIS[i]}</small>${Math.round(p * 100)}%</span>`
+                `<span class="${cor(p)}"><small>${FASES[i].nome} <i>${FASES[i].nivel}</i></small>${Math.round(p * 100)}%</span>`
             )
             .join("")}
         </div>

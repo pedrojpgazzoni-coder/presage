@@ -1568,3 +1568,9 @@ footer .fine {
   letter-spacing: 0.05em;
   color: var(--dim);
 }
+
+/* O nivel ao lado do nome da fase, mais apagado. */
+.niveis small i {
+  font-style: normal;
+  opacity: 0.6;
+}

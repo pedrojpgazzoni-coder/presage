@@ -21,12 +21,17 @@ function Niveis({ pontos, grande = false }: { pontos: LevelOdds[]; grande?: bool
   if (!pontos || pontos.length === 0) return null;
   return (
     <div className={`niveis ${grande ? "niveis-grande" : ""}`}>
-      {pontos.map((p) => (
+      {pontos.map((p, i) => (
         <span key={p.level} className={tone(p.odds)}>
           {/* O nome da fase é como se pensa o jogo; o nível fica junto para o
-              rótulo não virar vago. */}
+              rótulo não virar vago. A última leva "+": late game não acaba no
+              11, começa nele. */}
           <small>
-            {p.phase} <i>nv {p.level}</i>
+            {p.phase}{" "}
+            <i>
+              nv {p.level}
+              {i === pontos.length - 1 ? "+" : ""}
+            </i>
           </small>
           {pct(p.odds)}
         </span>
