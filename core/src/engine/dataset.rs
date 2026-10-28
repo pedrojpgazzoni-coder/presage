@@ -41,6 +41,33 @@ pub struct Dataset {
     pub matchup: HashMap<String, Record>,
     #[serde(default)]
     pub synergy: HashMap<String, Record>,
+    /// `103:Mid:8214` — campeão, rota e a runa principal.
+    #[serde(default)]
+    pub runes: HashMap<String, Record>,
+    /// `103:Mid:3089` — campeão, rota e um item do inventário final.
+    #[serde(default)]
+    pub items: HashMap<String, Record>,
+}
+
+/// Prefixo `campeão:rota:`, para varrer tudo de um campeão numa rota sem
+/// guardar um índice separado. A chave é texto porque JSON só tem chave de
+/// texto, e varrer um HashMap de algumas dezenas de milhares de entradas custa
+/// menos que manter duas estruturas em sincronia.
+fn prefixo(champion: i64, role: Role) -> String {
+    format!("{champion}:{role:?}:")
+}
+
+/// Lê o número depois do último `:`.
+fn sufixo(chave: &str) -> Option<i64> {
+    chave.rsplit(':').next()?.parse().ok()
+}
+
+pub fn rune_key(champion: i64, role: Role, keystone: i64) -> String {
+    format!("{champion}:{role:?}:{keystone}")
+}
+
+pub fn item_key(champion: i64, role: Role, item: i64) -> String {
+    format!("{champion}:{role:?}:{item}")
 }
 
 pub fn base_key(champion: i64, role: Role) -> String {
@@ -78,9 +105,48 @@ impl StatsStore for Dataset {
     fn personal(&self, _champion: i64) -> Option<Record> {
         None
     }
+
+    fn rune(&self, champion: i64, role: Role, keystone: i64) -> Option<Record> {
+        self.runes.get(&rune_key(champion, role, keystone)).copied()
+    }
+
+    fn runes_for(&self, champion: i64, role: Role) -> Vec<(i64, Record)> {
+        colher(&self.runes, champion, role)
+    }
+
+    fn item(&self, champion: i64, role: Role, item: i64) -> Option<Record> {
+        self.items.get(&item_key(champion, role, item)).copied()
+    }
+
+    fn items_for(&self, champion: i64, role: Role) -> Vec<(i64, Record)> {
+        colher(&self.items, champion, role)
+    }
+
     fn has_global(&self) -> bool {
         self.is_usable()
     }
+    fn has_runes(&self) -> bool {
+        !self.runes.is_empty()
+    }
+    fn has_items(&self) -> bool {
+        !self.items.is_empty()
+    }
+}
+
+/// Tudo de um campeão numa rota, ordenado da maior amostra para a menor.
+///
+/// A ordem é por amostra, não por winrate: quem chama decide o critério, e
+/// devolver "a melhor" aqui esconderia que a segunda tem dez vezes mais
+/// partidas.
+fn colher(mapa: &HashMap<String, Record>, champion: i64, role: Role) -> Vec<(i64, Record)> {
+    let chave = prefixo(champion, role);
+    let mut saida: Vec<(i64, Record)> = mapa
+        .iter()
+        .filter(|(k, _)| k.starts_with(&chave))
+        .filter_map(|(k, r)| sufixo(k).map(|id| (id, *r)))
+        .collect();
+    saida.sort_by(|a, b| b.1.games.cmp(&a.1.games).then(a.0.cmp(&b.0)));
+    saida
 }
 
 /// O que o app usa de verdade: a base agregada (quando existe) para os três
@@ -122,8 +188,32 @@ impl StatsStore for Layered {
     fn personal(&self, champion: i64) -> Option<Record> {
         self.personal.personal(champion)
     }
+    fn rune(&self, champion: i64, role: Role, keystone: i64) -> Option<Record> {
+        self.global.as_ref()?.rune(champion, role, keystone)
+    }
+    fn runes_for(&self, champion: i64, role: Role) -> Vec<(i64, Record)> {
+        self.global
+            .as_ref()
+            .map(|d| d.runes_for(champion, role))
+            .unwrap_or_default()
+    }
+    fn item(&self, champion: i64, role: Role, item: i64) -> Option<Record> {
+        self.global.as_ref()?.item(champion, role, item)
+    }
+    fn items_for(&self, champion: i64, role: Role) -> Vec<(i64, Record)> {
+        self.global
+            .as_ref()
+            .map(|d| d.items_for(champion, role))
+            .unwrap_or_default()
+    }
     fn has_global(&self) -> bool {
         self.global.is_some()
+    }
+    fn has_runes(&self) -> bool {
+        self.global.as_ref().is_some_and(|d| d.has_runes())
+    }
+    fn has_items(&self) -> bool {
+        self.global.as_ref().is_some_and(|d| d.has_items())
     }
     fn has_personal(&self) -> bool {
         self.personal.has_personal()
@@ -150,7 +240,82 @@ mod tests {
                 Record::new(1840, 1050),
             )]),
             synergy: HashMap::from([(synergy_key(103, 64), Record::new(900, 480))]),
+            runes: HashMap::from([
+                // Eletrocutar, muito jogada; Cometa, menos jogada e com winrate
+                // melhor. É de propósito: é o caso que separa "mais comum" de
+                // "melhor".
+                (rune_key(103, Role::Mid, 8112), Record::new(26_000, 13_000)),
+                (rune_key(103, Role::Mid, 8229), Record::new(9_000, 4_950)),
+            ]),
+            items: HashMap::from([
+                (item_key(103, Role::Mid, 3089), Record::new(31_000, 18_000)),
+                (item_key(103, Role::Mid, 3157), Record::new(22_000, 12_100)),
+            ]),
         }
+    }
+
+    #[test]
+    fn as_runas_de_um_campeao_saem_por_amostra() {
+        let d = cheio();
+        let runas = d.runes_for(103, Role::Mid);
+
+        assert_eq!(runas.len(), 2);
+        assert_eq!(runas[0].0, 8112, "a mais jogada vem primeiro");
+        assert_eq!(runas[0].1, Record::new(26_000, 13_000));
+        assert_eq!(runas[1].0, 8229);
+    }
+
+    #[test]
+    fn a_mais_jogada_nao_e_sempre_a_melhor() {
+        // A razão de `runes_for` devolver tudo em vez de "a melhor": quem
+        // escolhe o critério é quem chama.
+        let d = cheio();
+        let runas = d.runes_for(103, Role::Mid);
+
+        let mais_jogada = runas[0].1;
+        let menos_jogada = runas[1].1;
+        assert!(menos_jogada.rate().unwrap() > mais_jogada.rate().unwrap());
+    }
+
+    #[test]
+    fn runa_de_outra_rota_nao_vaza() {
+        let d = cheio();
+        assert!(d.runes_for(103, Role::Top).is_empty());
+        assert!(d.rune(103, Role::Top, 8112).is_none());
+        assert_eq!(d.rune(103, Role::Mid, 8112), Some(Record::new(26_000, 13_000)));
+    }
+
+    #[test]
+    fn os_itens_saem_do_mesmo_jeito() {
+        let d = cheio();
+        let itens = d.items_for(103, Role::Mid);
+        assert_eq!(itens[0].0, 3089);
+        assert_eq!(d.item(103, Role::Mid, 3157), Some(Record::new(22_000, 12_100)));
+    }
+
+    #[test]
+    fn base_sem_runas_responde_vazio_em_vez_de_palpite() {
+        let mut d = cheio();
+        d.runes.clear();
+        d.items.clear();
+
+        assert!(!d.has_runes());
+        assert!(!d.has_items());
+        assert!(d.runes_for(103, Role::Mid).is_empty());
+        assert!(d.rune(103, Role::Mid, 8112).is_none());
+        // E a base continua servindo para o resto.
+        assert!(d.has_global());
+    }
+
+    #[test]
+    fn base_antiga_carrega_sem_as_chaves_novas() {
+        // Uma base gerada antes de o coletor guardar runas: tem de abrir.
+        let antiga = r#"{"patch":"16.20","matches":10,"base":{"103:Mid":{"games":10,"wins":6}}}"#;
+        let d: Dataset = serde_json::from_str(antiga).unwrap();
+
+        assert!(d.is_usable());
+        assert!(!d.has_runes());
+        assert!(d.runes.is_empty());
     }
 
     #[test]

@@ -21,7 +21,9 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use presage_core::engine::champion::Role;
-use presage_core::engine::dataset::{base_key, matchup_key, synergy_key, Dataset};
+use presage_core::engine::dataset::{
+    base_key, item_key, matchup_key, rune_key, synergy_key, Dataset,
+};
 use presage_core::engine::stats::Record;
 
 /// Abaixo disto é remake ou abandono precoce, independente das flags.
@@ -65,6 +67,55 @@ pub struct Participant {
     pub team_position: String,
     pub win: bool,
     pub game_ended_in_early_surrender: bool,
+    /// Inventário no fim da partida. Sete posições: seis itens e o totem.
+    pub item0: i64,
+    pub item1: i64,
+    pub item2: i64,
+    pub item3: i64,
+    pub item4: i64,
+    pub item5: i64,
+    pub item6: i64,
+    pub perks: Perks,
+}
+
+impl Participant {
+    fn itens(&self) -> [i64; 7] {
+        [
+            self.item0, self.item1, self.item2, self.item3, self.item4, self.item5, self.item6,
+        ]
+    }
+
+    /// A runa principal (keystone): a primeira seleção da árvore primária.
+    ///
+    /// `None` quando a partida veio sem as runas, o que acontece em respostas
+    /// antigas. Nesse caso a partida continua valendo para base, matchup e
+    /// sinergia — só não rende observação de runa.
+    pub fn keystone(&self) -> Option<i64> {
+        let primeira = self.perks.styles.first()?;
+        let escolha = primeira.selections.first()?;
+        (escolha.perk > 0).then_some(escolha.perk)
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Perks {
+    /// A primeira é a árvore primária; a segunda, a secundária.
+    pub styles: Vec<PerkStyle>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PerkStyle {
+    pub description: String,
+    pub style: i64,
+    pub selections: Vec<PerkSelection>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PerkSelection {
+    pub perk: i64,
 }
 
 /// Por que uma partida não entrou.
@@ -124,6 +175,8 @@ pub struct Counts {
     pub base: HashMap<String, Record>,
     pub matchup: HashMap<String, Record>,
     pub synergy: HashMap<String, Record>,
+    pub runes: HashMap<String, Record>,
+    pub items: HashMap<String, Record>,
     pub matches: u64,
     /// O patch travado, assim que a primeira partida é aceita.
     pub patch: String,
@@ -219,6 +272,27 @@ impl Counts {
         for p in &info.participants {
             let role = Role::from_lcu(&p.team_position);
             bump(&mut self.base, base_key(p.champion_id, role), p.win);
+
+            // Runa: a medida mais limpa da base. Ela é escolhida antes do
+            // primeiro minuto, então o resultado da partida não influenciou a
+            // escolha — ao contrário do inventário.
+            if let Some(keystone) = p.keystone() {
+                bump(
+                    &mut self.runes,
+                    rune_key(p.champion_id, role, keystone),
+                    p.win,
+                );
+            }
+
+            // Itens: o inventário do fim. Slot vazio é zero, e um item só
+            // conta uma vez por partida mesmo se aparecer em dois slots.
+            let mut vistos: Vec<i64> = Vec::with_capacity(7);
+            for item in p.itens() {
+                if item > 0 && !vistos.contains(&item) {
+                    vistos.push(item);
+                    bump(&mut self.items, item_key(p.champion_id, role, item), p.win);
+                }
+            }
         }
 
         for (role, dupla) in &por_rota {
@@ -284,6 +358,8 @@ impl Counts {
             base: podar(self.base),
             matchup: podar(self.matchup),
             synergy: podar(self.synergy),
+            runes: podar(self.runes),
+            items: podar(self.items),
         }
     }
 }
@@ -294,9 +370,13 @@ pub struct Coverage {
     pub base: usize,
     pub matchup: usize,
     pub synergy: usize,
+    pub runes: usize,
+    pub items: usize,
     /// Entradas com amostra grande o bastante para mexer no ranking.
     pub matchup_util: usize,
     pub base_util: usize,
+    pub runes_util: usize,
+    pub items_util: usize,
 }
 
 /// A partir daqui o componente desloca a estimativa mais de um ponto
@@ -310,8 +390,12 @@ pub fn coverage(dataset: &Dataset) -> Coverage {
         base: dataset.base.len(),
         matchup: dataset.matchup.len(),
         synergy: dataset.synergy.len(),
+        runes: dataset.runes.len(),
+        items: dataset.items.len(),
         matchup_util: acima(&dataset.matchup),
         base_util: acima(&dataset.base),
+        runes_util: acima(&dataset.runes),
+        items_util: acima(&dataset.items),
     }
 }
 
@@ -321,6 +405,10 @@ mod tests {
 
     const ROTAS: [&str; 5] = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 
+    /// Runa principal e dois itens, iguais para todo mundo: assim a conta de
+    /// quantas linhas saem de uma partida fica previsível.
+    const KEYSTONE: i64 = 8112;
+
     fn participante(champion_id: i64, team_id: i64, rota: &str, win: bool) -> Participant {
         Participant {
             champion_id,
@@ -328,6 +416,27 @@ mod tests {
             team_position: rota.into(),
             win,
             game_ended_in_early_surrender: false,
+            item0: 3089,
+            item1: 3157,
+            item2: 0,
+            item3: 0,
+            item4: 0,
+            item5: 0,
+            item6: 3340,
+            perks: Perks {
+                styles: vec![
+                    PerkStyle {
+                        description: "primaryStyle".into(),
+                        style: 8100,
+                        selections: vec![PerkSelection { perk: KEYSTONE }],
+                    },
+                    PerkStyle {
+                        description: "subStyle".into(),
+                        style: 8000,
+                        selections: vec![PerkSelection { perk: 9111 }],
+                    },
+                ],
+            },
         }
     }
 
@@ -422,6 +531,92 @@ mod tests {
         assert_eq!(c.matches, 2);
         assert_eq!(c.base[&base_key(1, Role::Top)], Record::new(2, 1));
         assert_eq!(c.matchup[&matchup_key(1, 11, Role::Top)], Record::new(2, 1));
+    }
+
+    #[test]
+    fn a_runa_principal_e_a_primeira_da_arvore_primaria() {
+        let p = participante(1, 100, "TOP", true);
+        assert_eq!(p.keystone(), Some(KEYSTONE));
+
+        // Sem runas (resposta antiga): a partida vale para o resto, mas não
+        // rende observação de runa.
+        let mut sem = participante(1, 100, "TOP", true);
+        sem.perks = Perks::default();
+        assert_eq!(sem.keystone(), None);
+    }
+
+    #[test]
+    fn uma_partida_rende_uma_linha_de_runa_por_jogador() {
+        let mut c = Counts::default();
+        c.add(&partida(true), &filtro()).unwrap();
+
+        // Dez jogadores, dez campeões diferentes, a mesma runa.
+        assert_eq!(c.runes.len(), 10);
+        assert_eq!(c.runes[&rune_key(1, Role::Top, KEYSTONE)], Record::new(1, 1));
+        assert_eq!(
+            c.runes[&rune_key(11, Role::Top, KEYSTONE)],
+            Record::new(1, 0),
+            "o do outro lado perdeu com a mesma runa"
+        );
+    }
+
+    #[test]
+    fn partida_sem_runas_nao_e_recusada() {
+        // Uma partida antiga ainda mede base, matchup e sinergia.
+        let mut info = partida(true);
+        for p in info.participants.iter_mut() {
+            p.perks = Perks::default();
+        }
+
+        let mut c = Counts::default();
+        assert!(c.add(&info, &filtro()).is_ok());
+        assert_eq!(c.base.len(), 10);
+        assert!(c.runes.is_empty());
+    }
+
+    #[test]
+    fn o_item_conta_uma_vez_por_partida() {
+        let mut info = partida(true);
+        // O mesmo item em dois slots: poção dupla, item repetido. Conta um.
+        info.participants[0].item2 = info.participants[0].item0;
+
+        let mut c = Counts::default();
+        c.add(&info, &filtro()).unwrap();
+
+        assert_eq!(c.items[&item_key(1, Role::Top, 3089)], Record::new(1, 1));
+    }
+
+    #[test]
+    fn slot_vazio_nao_vira_item() {
+        let mut c = Counts::default();
+        c.add(&partida(true), &filtro()).unwrap();
+
+        assert!(
+            !c.items.keys().any(|k| k.ends_with(":0")),
+            "o id zero é slot vazio, não um item"
+        );
+        // Três itens por jogador (dois mais o totem), dez jogadores.
+        assert_eq!(c.items.len(), 30);
+    }
+
+    #[test]
+    fn o_totem_tambem_conta() {
+        // Não filtramos o totem aqui: quem lê a base decide o que é item de
+        // build. Filtrar no coletor jogaria fora dado que não volta.
+        let mut c = Counts::default();
+        c.add(&partida(true), &filtro()).unwrap();
+        assert_eq!(c.items[&item_key(1, Role::Top, 3340)], Record::new(1, 1));
+    }
+
+    #[test]
+    fn remake_nao_conta_runa_nem_item() {
+        let mut info = partida(true);
+        info.participants[0].game_ended_in_early_surrender = true;
+
+        let mut c = Counts::default();
+        assert_eq!(c.add(&info, &filtro()), Err(Skip::Remake));
+        assert!(c.runes.is_empty());
+        assert!(c.items.is_empty());
     }
 
     #[test]

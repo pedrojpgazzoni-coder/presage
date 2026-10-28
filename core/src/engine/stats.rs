@@ -15,6 +15,15 @@ impl Record {
             wins: wins.min(games),
         }
     }
+
+    /// Winrate cru, sem encolhimento. Zero partidas devolve `None` em vez de
+    /// NaN ou de 0,5 — não saber não é o mesmo que estar no meio.
+    ///
+    /// Para ranquear o que o motor usa, prefira `shrink`: este número cru faz
+    /// uma amostra de três partidas parecer tão firme quanto uma de três mil.
+    pub fn rate(&self) -> Option<f64> {
+        (self.games > 0).then(|| self.wins as f64 / self.games as f64)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -71,9 +80,50 @@ pub trait StatsStore: Send + Sync {
     fn synergy(&self, champion: i64, ally: i64) -> Option<Record>;
     fn personal(&self, champion: i64) -> Option<Record>;
 
+    /// Quantas partidas, e quantas vitórias, com esta runa principal neste
+    /// campeão e rota.
+    ///
+    /// Runa é a medida mais limpa que a base tem: ela é escolhida antes do
+    /// primeiro minuto, sem saber o que vai acontecer. Nenhum viés de
+    /// resultado entra na escolha.
+    fn rune(&self, _champion: i64, _role: Role, _keystone: i64) -> Option<Record> {
+        None
+    }
+
+    /// Todas as runas principais vistas neste campeão e rota, com a contagem
+    /// de cada uma. É daqui que sai "a melhor runa", ordenando por winrate.
+    fn runes_for(&self, _champion: i64, _role: Role) -> Vec<(i64, Record)> {
+        Vec::new()
+    }
+
+    /// Partidas em que o item terminou no inventário deste campeão nesta rota.
+    ///
+    /// **Este número tem viés e não dá para tirar.** Quem ganha a partida tem
+    /// mais ouro e termina mais itens, então item caro aparece mais em vitória
+    /// por ser caro, não por ser bom. O inventário final é o que a match-v5
+    /// entrega; a ordem de compra só existe na timeline, que custa uma chamada
+    /// a mais por partida. Quem lê isto tem de dizer o viés na tela.
+    fn item(&self, _champion: i64, _role: Role, _item: i64) -> Option<Record> {
+        None
+    }
+
+    fn items_for(&self, _champion: i64, _role: Role) -> Vec<(i64, Record)> {
+        Vec::new()
+    }
+
     /// Base agregada sobre muitos jogadores: winrate por rota, matchup,
     /// sinergia. Vem do pipeline de ingestão.
     fn has_global(&self) -> bool {
+        false
+    }
+
+    /// A base carrega runas. Pode ser falso numa base antiga, gerada antes de
+    /// o coletor passar a guardá-las.
+    fn has_runes(&self) -> bool {
+        false
+    }
+
+    fn has_items(&self) -> bool {
         false
     }
 

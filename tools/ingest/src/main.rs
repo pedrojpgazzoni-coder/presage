@@ -207,6 +207,8 @@ fn parece_vazio(dataset: &Dataset) -> bool {
         && dataset.base.is_empty()
         && dataset.matchup.is_empty()
         && dataset.synergy.is_empty()
+        && dataset.runes.is_empty()
+        && dataset.items.is_empty()
 }
 
 fn relatorio(dataset: &Dataset) {
@@ -234,6 +236,18 @@ fn relatorio(dataset: &Dataset) {
         pct(cob.matchup_util, cob.matchup)
     );
     println!("  sinergia:      {:>7} entradas", cob.synergy);
+    println!(
+        "  runas:         {:>7} entradas, {} com n>={USEFUL} ({:.0}%)",
+        cob.runes,
+        cob.runes_util,
+        pct(cob.runes_util, cob.runes)
+    );
+    println!(
+        "  itens:         {:>7} entradas, {} com n>={USEFUL} ({:.0}%)",
+        cob.items,
+        cob.items_util,
+        pct(cob.items_util, cob.items)
+    );
 
     if !dataset.is_usable() {
         println!("\n  Esta base ainda não serve: o app vai ignorá-la.");
