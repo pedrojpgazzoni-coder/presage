@@ -40,3 +40,14 @@ latest.json
 *.local
 .DS_Store
 Thumbs.db
+
+# Exceção pedida: o instalador da versão atual fica versionado em
+# `instalador/`, para quem clona o repositório pegar o .exe sem passar pela
+# release. O custo é real e vale lembrar: cada versão nova soma ~2,5 MB ao
+# histórico, e o git não esquece — tirar depois exige reescrever o histórico.
+# Por isso é uma pasta só, com uma versão por vez, e não o `target/` inteiro.
+!instalador/
+!instalador/*.exe
+!instalador/*.msi
+!instalador/*.sig
+!instalador/latest.json
