@@ -39,6 +39,8 @@ pub const EVENT_REVIEW: &str = "presage://review";
 pub const EVENT_PREFS: &str = "presage://prefs";
 /// Nick, rank e histórico chegaram do cliente.
 pub const EVENT_PROFILE: &str = "presage://profile";
+/// O placar de dano da partida que acabou de terminar.
+pub const EVENT_DAMAGE: &str = "presage://damage";
 
 /// Quantas partidas o histórico traz.
 const HISTORICO: usize = 20;
@@ -81,6 +83,9 @@ pub struct Shared {
     pub dataset: RwLock<Option<Dataset>>,
     /// Nick, rank e últimas partidas, lidos do cliente local.
     pub profile: Mutex<Option<crate::lcu::history::Profile>>,
+    /// O dano dos dez na última partida terminada. É o único lugar onde o dano
+    /// de todo mundo existe: a API ao vivo não entrega dano nenhum.
+    pub last_damage: Mutex<Option<crate::lcu::history::DamageBoard>>,
     /// A primeira execução já foi respondida.
     pub onboarding: Mutex<bool>,
 }
@@ -102,6 +107,7 @@ impl Shared {
             last_review: Mutex::new(None),
             dataset: RwLock::new(None),
             profile: Mutex::new(None),
+            last_damage: Mutex::new(None),
             onboarding: Mutex::new(false),
         }
     }
@@ -136,6 +142,75 @@ fn close_recording(app: &AppHandle, shared: &Shared) {
     }
 }
 
+/// Busca o dano dos dez da partida que acabou.
+///
+/// O cliente leva alguns segundos para a partida aparecer no histórico, então
+/// isto é chamado a cada volta ociosa até o `gameId` mudar — e desiste depois
+/// de um tempo, para não ficar batendo no cliente para sempre quando a partida
+/// simplesmente não entrou (custom, remake, partida de treino).
+///
+/// Devolve `true` quando terminou (com placar ou desistindo).
+async fn try_damage_board(
+    app: &AppHandle,
+    shared: &Shared,
+    lcu: &LcuClient,
+    ja_visto: &mut Option<i64>,
+) -> bool {
+    let puuid = shared
+        .identity
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|id| id.puuid.clone())
+        .unwrap_or_default();
+
+    let recentes = match crate::lcu::history::recent(lcu, 1).await {
+        Ok(lista) => lista,
+        Err(err) => {
+            tracing::debug!(%err, "histórico ainda não respondeu");
+            return false;
+        }
+    };
+
+    let Some(nova) = recentes.first() else {
+        return false;
+    };
+
+    // Mesma partida de antes: o cliente ainda não registrou a que acabou.
+    if *ja_visto == Some(nova.game_id) {
+        return false;
+    }
+
+    match crate::lcu::history::damage_board(lcu, nova.game_id, &puuid).await {
+        Ok(Some(placar)) => {
+            tracing::info!(
+                partida = placar.game_id,
+                dano_do_time = placar.ally_total,
+                "placar de dano pronto"
+            );
+            *ja_visto = Some(placar.game_id);
+            let _ = app.emit(EVENT_DAMAGE, &placar);
+            *shared.last_damage.lock().unwrap() = Some(placar);
+
+            // A tela inicial também mudou: tem uma partida nova nela.
+            if let Ok(perfil) = crate::lcu::history::profile(lcu, HISTORICO).await {
+                let _ = app.emit(EVENT_PROFILE, &perfil);
+                *shared.profile.lock().unwrap() = Some(perfil);
+            }
+            true
+        }
+        Ok(None) => {
+            tracing::debug!(partida = nova.game_id, "partida sem participantes");
+            *ja_visto = Some(nova.game_id);
+            true
+        }
+        Err(err) => {
+            tracing::debug!(%err, "detalhe da partida ainda não respondeu");
+            false
+        }
+    }
+}
+
 fn clear_draft(app: &AppHandle, shared: &Shared) {
     if shared.draft.lock().unwrap().take().is_some() {
         let _ = app.emit::<Option<DraftState>>(EVENT_DRAFT, None);
@@ -145,6 +220,14 @@ fn clear_draft(app: &AppHandle, shared: &Shared) {
 pub async fn run(app: AppHandle, shared: Arc<Shared>) {
     let mut client: Option<LcuClient> = None;
     let mut summoner: Option<String> = None;
+    /// Quantas voltas ociosas esperar pelo histórico antes de desistir. A ~1,5s
+    /// por volta, dá um minuto — folgado para o cliente registrar a partida, e
+    /// curto o bastante para não bater nele a tarde inteira.
+    const ESPERAS_PELO_PLACAR: u8 = 40;
+    // A última partida que já tem placar, para não refazer o trabalho.
+    let mut placar_de: Option<i64> = None;
+    let mut esperando_placar: u8 = 0;
+    let mut estava_jogando = false;
 
     let live_client = match LiveClient::new() {
         Ok(client) => client,
@@ -192,6 +275,10 @@ pub async fn run(app: AppHandle, shared: Arc<Shared>) {
                         }
                         Err(err) => tracing::warn!(%err, "não consegui ler o perfil"),
                     }
+
+                    // O dano da última partida já na abertura: quem acabou de
+                    // jogar e abriu o Presage tem o que ver.
+                    try_damage_board(&app, &shared, &c, &mut placar_de).await;
 
                     client = Some(c);
                 }
@@ -262,6 +349,7 @@ pub async fn run(app: AppHandle, shared: Arc<Shared>) {
             tokio::time::sleep(POLL_CHAMP_SELECT).await;
         } else if phase == "InProgress" {
             clear_draft(&app, &shared);
+            estava_jogando = true;
 
             match live_client.snapshot().await {
                 Ok(raw) => {
@@ -320,6 +408,20 @@ pub async fn run(app: AppHandle, shared: Arc<Shared>) {
             // publica a leitura. `finish` limpa a gravação mesmo quando não
             // rende relatório, então isto não dispara duas vezes.
             close_recording(&app, &shared);
+
+            // Saímos da partida: o dano dos dez vai aparecer no histórico do
+            // cliente daqui a alguns segundos. Começa a procurar.
+            if estava_jogando {
+                estava_jogando = false;
+                esperando_placar = ESPERAS_PELO_PLACAR;
+            }
+
+            if esperando_placar > 0 {
+                esperando_placar -= 1;
+                if try_damage_board(&app, &shared, lcu, &mut placar_de).await {
+                    esperando_placar = 0;
+                }
+            }
 
             tokio::time::sleep(POLL_IDLE).await;
         }

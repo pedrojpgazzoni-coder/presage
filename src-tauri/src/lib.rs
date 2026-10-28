@@ -233,6 +233,17 @@ fn last_review(shared: tauri::State<'_, Arc<Shared>>) -> Option<Report> {
     shared.last_review.lock().unwrap().clone()
 }
 
+/// O dano dos dez na última partida terminada.
+///
+/// É o único lugar onde o dano de todo mundo existe. Durante a partida, a Live
+/// Client Data API entrega abates, tropas e visão — e nada de dano, de ninguém.
+/// O número real só aparece depois do apito, no histórico do próprio cliente,
+/// e é esse que chega aqui.
+#[tauri::command]
+fn last_damage(shared: tauri::State<'_, Arc<Shared>>) -> Option<lcu::history::DamageBoard> {
+    shared.last_damage.lock().unwrap().clone()
+}
+
 /// O que falta na pool desta rota, e quem preenche.
 ///
 /// É o terceiro passo do Construtor: depois dos core e dos situacionais, o
@@ -582,6 +593,7 @@ fn montar(com_atualizador: bool) -> tauri::Builder<tauri::Wry> {
             skirmish_focus,
             gold_report,
             last_review,
+            last_damage,
             pool_suggestions,
             rune_plan,
             get_overlay_prefs,

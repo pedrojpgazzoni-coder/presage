@@ -169,6 +169,15 @@ export default function OverlayPrefsPanel({ prefs, onChange }: Props) {
         </div>
       )}
 
+      {/* Esta linha evita uma decepção: quem procura "dano de todos" no
+          overlay precisa saber por que ele não está lá. */}
+      <p className="warn-line">
+        O <b>dano de todos na partida</b> não aparece aqui, e não é escolha
+        nossa: durante o jogo a API da Riot não entrega o dano de ninguém, nem o
+        seu. O número real está na aba <b>Pós-jogo</b>, assim que a partida
+        acaba, vindo do histórico do seu cliente.
+      </p>
+
       <p className="faint">
         O overlay abre e fecha com <b>Ctrl+Shift+P</b>. Ele nasce atravessável
         pelo mouse, então não come clique; <b>Ctrl+Shift+O</b> deixa a janela

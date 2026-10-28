@@ -7,6 +7,7 @@ import type {
   BanSuggestion,
   BuildContext,
   CoachReport,
+  DamageBoard,
   ConnStatus,
   DraftState,
   EngineStatus,
@@ -27,6 +28,7 @@ import type {
 import { MAPA_PADRAO, ROLE_TO_LCU } from "./lib/types";
 import Atualizacao from "./components/Atualizacao";
 import ConnectionStatus from "./components/ConnectionStatus";
+import DamageBoardCard from "./components/DamageBoardCard";
 import DraftBoard from "./components/DraftBoard";
 import GoldTracker from "./components/GoldTracker";
 import Home from "./components/Home";
@@ -47,6 +49,7 @@ const EVENT_ENGINE = "presage://engine";
 const EVENT_LIVE = "presage://live";
 const EVENT_REVIEW = "presage://review";
 const EVENT_PROFILE = "presage://profile";
+const EVENT_DAMAGE = "presage://damage";
 
 type View = "home" | "draft" | "lanes" | "live" | "coach" | "pool" | "overlay";
 
@@ -79,6 +82,7 @@ export default function App() {
   const [lanes, setLanes] = useState<LaneReport | null>(null);
   const [goldReport, setGoldReport] = useState<GoldReport | null>(null);
   const [review, setReview] = useState<CoachReport | null>(null);
+  const [damage, setDamage] = useState<DamageBoard | null>(null);
   const [runas, setRunas] = useState<RunePlan | null>(null);
   const [overlayPrefs, setOverlayPrefs] = useState<OverlayPrefs>({
     hidden: [],
@@ -114,6 +118,7 @@ export default function App() {
     invoke<Pool>("get_pool").then(setPool).catch(() => void 0);
     invoke<LiveSnapshot | null>("get_live").then(setLive).catch(() => void 0);
     invoke<CoachReport | null>("last_review").then(setReview).catch(() => void 0);
+    invoke<DamageBoard | null>("last_damage").then(setDamage).catch(() => void 0);
     invoke<OverlayPrefs>("get_overlay_prefs").then(setOverlayPrefs).catch(() => void 0);
     invoke<Profile | null>("lcu_profile").then(setProfile).catch(() => void 0);
     invoke<boolean>("onboarding_done")
@@ -132,6 +137,12 @@ export default function App() {
         setView("coach");
       }),
       listen<Profile>(EVENT_PROFILE, (event) => setProfile(event.payload)),
+      // O dano dos dez chega alguns segundos depois do fim da partida, quando
+      // o cliente registra o jogo no histórico.
+      listen<DamageBoard>(EVENT_DAMAGE, (event) => {
+        setDamage(event.payload);
+        setView("coach");
+      }),
       listen<DraftState | null>(EVENT_DRAFT, (event) => {
         setDraft(event.payload);
         clockAnchor.current = event.payload
@@ -374,7 +385,13 @@ export default function App() {
       ) : view === "coach" ? (
         <main className="layout layout-single">
           <section className="panel">
-            <PostGame report={review} />
+            {/* O dano vem primeiro: é o número que a pessoa procura quando a
+                partida acaba. A leitura do coach vem embaixo. */}
+            <DamageBoardCard board={damage} staticData={staticData} />
+            {/* Com o placar na tela, "nenhuma partida lida" não faz sentido:
+                a leitura do coach só existe para partidas que o Presage
+                acompanhou do começo ao fim. */}
+            {(review || !damage) && <PostGame report={review} />}
           </section>
         </main>
       ) : view === "live" ? (

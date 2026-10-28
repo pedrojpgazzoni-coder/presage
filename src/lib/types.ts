@@ -341,6 +341,39 @@ export interface Profile {
   matches: PastGame[];
 }
 
+/** Uma linha do placar de dano pós-partida. */
+export interface DamageRow {
+  riotId: string;
+  championId: number;
+  teamId: number;
+  ally: boolean;
+  isMe: boolean;
+  damage: number;
+  damageTaken: number;
+  gold: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  /** Fatia do dano do próprio time, de 0 a 1. */
+  teamShare: number;
+}
+
+/**
+ * O dano dos dez numa partida terminada.
+ *
+ * É o único lugar onde o dano de todo mundo existe: a API ao vivo da Riot não
+ * entrega dano de ninguém, nem o seu.
+ */
+export interface DamageBoard {
+  gameId: number;
+  duration: number;
+  win: boolean;
+  /** Já ordenado do maior dano para o menor, os dois times juntos. */
+  rows: DamageRow[];
+  allyTotal: number;
+  enemyTotal: number;
+}
+
 /** O que a primeira execução perguntou e já foi respondido. */
 export interface Onboarding {
   done: boolean;
@@ -390,10 +423,14 @@ export const OVERLAY_SECTIONS: {
   },
   {
     id: "damage",
-    label: "Dano que vem contra você",
-    detail: "quanto é físico, sua vida efetiva e a penetração deles",
+    label: "Defesa contra o dano deles",
+    detail: "quanto do dano deles é físico, sua vida efetiva e a penetração deles",
   },
-  { id: "objectives", label: "Objetivos", detail: "dragão, barão, arauto e grubs" },
+  {
+    id: "objectives",
+    label: "Objetivos",
+    detail: "dragão, barão, arauto e grubs, em cima do minimapa do jogo",
+  },
   {
     id: "priority",
     label: "Prioridade de rota",

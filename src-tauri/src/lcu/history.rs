@@ -66,14 +66,50 @@ struct RawGame {
     queue_id: i64,
     game_mode: String,
     participants: Vec<RawParticipant>,
+    /// Quem é cada participante. Vem numa lista separada, ligada por
+    /// `participantId` — não dentro do participante.
+    participant_identities: Vec<RawIdentity>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct RawParticipant {
+    participant_id: i64,
+    /// 100 ou 200.
+    team_id: i64,
     champion_id: i64,
     stats: RawStats,
     timeline: RawTimeline,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct RawIdentity {
+    participant_id: i64,
+    player: RawPlayer,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct RawPlayer {
+    game_name: String,
+    tag_line: String,
+    /// Campo antigo. Ainda aparece em partidas velhas, e é o que sobra quando
+    /// `gameName` vem vazio.
+    summoner_name: String,
+    puuid: String,
+}
+
+impl RawPlayer {
+    fn riot_id(&self) -> String {
+        if self.game_name.is_empty() {
+            return self.summoner_name.clone();
+        }
+        if self.tag_line.is_empty() {
+            return self.game_name.clone();
+        }
+        format!("{}#{}", self.game_name, self.tag_line)
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -269,6 +305,178 @@ pub async fn recent(client: &LcuClient, quantas: usize) -> Result<Vec<PastGame>>
         .collect())
 }
 
+// ---- dano de todos, depois da partida ----
+
+/// Uma linha do placar de dano.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DamageRow {
+    pub riot_id: String,
+    pub champion_id: i64,
+    /// 100 ou 200, como o cliente entrega.
+    pub team_id: i64,
+    pub ally: bool,
+    pub is_me: bool,
+    pub damage: i64,
+    pub damage_taken: i64,
+    pub gold: i64,
+    pub kills: i64,
+    pub deaths: i64,
+    pub assists: i64,
+    /// Fatia do dano do próprio time, de 0 a 1. É o número que diz quem
+    /// carregou a briga — mais que o total cru, que só reflete a duração.
+    pub team_share: f64,
+}
+
+/// O dano dos dez numa partida terminada.
+///
+/// **Este é o lugar onde o dano de todo mundo existe.** Durante a partida ele
+/// não existe em lugar nenhum da API legal: a Live Client Data API entrega
+/// abates, tropas e visão, e nada de dano. Então o número real chega aqui,
+/// depois do apito, vindo do histórico do próprio cliente.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DamageBoard {
+    pub game_id: i64,
+    pub duration: i64,
+    /// Se o jogador logado venceu.
+    pub win: bool,
+    /// Ordenado do maior dano para o menor, os dez juntos.
+    pub rows: Vec<DamageRow>,
+    pub ally_total: i64,
+    pub enemy_total: i64,
+}
+
+impl DamageBoard {
+    /// Dano por minuto do time do jogador. Compara partidas de durações
+    /// diferentes, que o total cru não compara.
+    pub fn ally_per_minute(&self) -> f64 {
+        let minutos = self.duration as f64 / 60.0;
+        if minutos <= 0.0 {
+            return 0.0;
+        }
+        self.ally_total as f64 / minutos
+    }
+}
+
+/// Monta o placar a partir da partida crua.
+///
+/// Separada da chamada de rede para poder ser testada com JSON de verdade —
+/// que é o único jeito honesto de testar um endpoint não documentado.
+fn board_from(game: RawGame, my_puuid: &str) -> Option<DamageBoard> {
+    if game.participants.is_empty() {
+        return None;
+    }
+
+    // `participantId` -> quem é. Partidas antigas podem vir sem a lista; nesse
+    // caso o placar sai sem nome, mas sai.
+    let quem: std::collections::HashMap<i64, &RawPlayer> = game
+        .participant_identities
+        .iter()
+        .map(|id| (id.participant_id, &id.player))
+        .collect();
+
+    // Qual time é o meu. Sem puuid conhecido, o primeiro participante é o
+    // jogador — é assim que o cliente monta o histórico dele.
+    let meu_time = quem
+        .iter()
+        .find(|(_, player)| !my_puuid.is_empty() && player.puuid == my_puuid)
+        .and_then(|(pid, _)| {
+            game.participants
+                .iter()
+                .find(|p| p.participant_id == *pid)
+                .map(|p| p.team_id)
+        })
+        .unwrap_or_else(|| game.participants[0].team_id);
+
+    // As somas por time vêm antes das linhas: a fatia de cada um depende do
+    // total do time dele.
+    let total_de = |time: i64| -> i64 {
+        game.participants
+            .iter()
+            .filter(|p| p.team_id == time)
+            .map(|p| p.stats.total_damage_dealt_to_champions)
+            .sum()
+    };
+
+    let ally_total = total_de(meu_time);
+    let enemy_total: i64 = game
+        .participants
+        .iter()
+        .filter(|p| p.team_id != meu_time)
+        .map(|p| p.stats.total_damage_dealt_to_champions)
+        .sum();
+
+    let mut win = false;
+
+    let mut rows: Vec<DamageRow> = game
+        .participants
+        .iter()
+        .map(|p| {
+            let player = quem.get(&p.participant_id);
+            let ally = p.team_id == meu_time;
+            let is_me = player
+                .map(|pl| !my_puuid.is_empty() && pl.puuid == my_puuid)
+                .unwrap_or(false);
+
+            if is_me {
+                win = p.stats.win;
+            }
+
+            let time_total = if ally { ally_total } else { enemy_total };
+
+            DamageRow {
+                riot_id: player.map(|pl| pl.riot_id()).unwrap_or_default(),
+                champion_id: p.champion_id,
+                team_id: p.team_id,
+                ally,
+                is_me,
+                damage: p.stats.total_damage_dealt_to_champions,
+                damage_taken: p.stats.total_damage_taken,
+                gold: p.stats.gold_earned,
+                kills: p.stats.kills,
+                deaths: p.stats.deaths,
+                assists: p.stats.assists,
+                team_share: if time_total > 0 {
+                    p.stats.total_damage_dealt_to_champions as f64 / time_total as f64
+                } else {
+                    0.0
+                },
+            }
+        })
+        .collect();
+
+    // Sem puuid não dá para saber quem sou eu, e aí a vitória é a do primeiro
+    // participante — o jogador, na forma como o cliente monta o histórico.
+    if !rows.iter().any(|r| r.is_me) {
+        win = game.participants[0].stats.win;
+    }
+
+    rows.sort_by(|a, b| b.damage.cmp(&a.damage));
+
+    Some(DamageBoard {
+        game_id: game.game_id,
+        duration: game.game_duration,
+        win,
+        rows,
+        ally_total,
+        enemy_total,
+    })
+}
+
+/// O placar de dano de uma partida terminada.
+pub async fn damage_board(
+    client: &LcuClient,
+    game_id: i64,
+    my_puuid: &str,
+) -> Result<Option<DamageBoard>> {
+    let game: RawGame = client
+        .get_json(&format!("/lol-match-history/v1/games/{game_id}"))
+        .await?;
+
+    Ok(board_from(game, my_puuid))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,6 +560,162 @@ mod tests {
     fn resposta_vazia_nao_quebra() {
         let envelope: HistoryEnvelope = serde_json::from_str("{}").unwrap();
         assert!(envelope.games.games.is_empty());
+    }
+
+    /// Uma partida crua de quatro participantes, dois de cada lado.
+    ///
+    /// Quatro e não dez porque a pergunta que os testes fazem — quem é meu
+    /// time, quem sou eu, de onde sai a fatia — se responde igual com quatro.
+    fn partida_crua() -> RawGame {
+        fn p(pid: i64, team: i64, champ: i64, dano: i64, win: bool) -> RawParticipant {
+            RawParticipant {
+                participant_id: pid,
+                team_id: team,
+                champion_id: champ,
+                stats: RawStats {
+                    win,
+                    kills: 5,
+                    deaths: 3,
+                    assists: 8,
+                    total_damage_dealt_to_champions: dano,
+                    total_damage_taken: dano / 2,
+                    gold_earned: 11000,
+                    ..Default::default()
+                },
+                timeline: RawTimeline::default(),
+            }
+        }
+
+        fn ident(pid: i64, nome: &str, puuid: &str) -> RawIdentity {
+            RawIdentity {
+                participant_id: pid,
+                player: RawPlayer {
+                    game_name: nome.into(),
+                    tag_line: "BR1".into(),
+                    summoner_name: String::new(),
+                    puuid: puuid.into(),
+                },
+            }
+        }
+
+        RawGame {
+            game_id: 77,
+            game_duration: 1800,
+            participants: vec![
+                p(1, 100, 103, 24000, true),
+                p(2, 100, 64, 8000, true),
+                p(3, 200, 238, 31000, false),
+                p(4, 200, 412, 5000, false),
+            ],
+            participant_identities: vec![
+                ident(1, "Eu", "puuid-eu"),
+                ident(2, "Aliado", "puuid-aliado"),
+                ident(3, "Inimigo", "puuid-inimigo"),
+                ident(4, "Outro", "puuid-outro"),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn o_placar_sai_ordenado_por_dano() {
+        let placar = board_from(partida_crua(), "puuid-eu").unwrap();
+        let danos: Vec<i64> = placar.rows.iter().map(|r| r.damage).collect();
+        assert_eq!(danos, vec![31000, 24000, 8000, 5000]);
+        assert_eq!(placar.rows.len(), 4, "os dois times no mesmo placar");
+    }
+
+    #[test]
+    fn meu_time_sai_do_meu_puuid() {
+        let placar = board_from(partida_crua(), "puuid-eu").unwrap();
+
+        let eu = placar.rows.iter().find(|r| r.is_me).unwrap();
+        assert_eq!(eu.riot_id, "Eu#BR1");
+        assert!(eu.ally);
+        assert!(placar.win, "o resultado é o meu, não o do primeiro da lista");
+
+        assert_eq!(placar.ally_total, 32000);
+        assert_eq!(placar.enemy_total, 36000);
+    }
+
+    #[test]
+    fn do_outro_lado_o_placar_vira() {
+        // O mesmo JSON, lido por quem jogou do outro lado.
+        let placar = board_from(partida_crua(), "puuid-inimigo").unwrap();
+        assert_eq!(placar.ally_total, 36000);
+        assert_eq!(placar.enemy_total, 32000);
+        assert!(!placar.win);
+    }
+
+    #[test]
+    fn a_fatia_e_do_proprio_time() {
+        let placar = board_from(partida_crua(), "puuid-eu").unwrap();
+
+        let eu = placar.rows.iter().find(|r| r.is_me).unwrap();
+        // 24000 de 32000 do meu time — não de 68000 da partida inteira.
+        assert!((eu.team_share - 0.75).abs() < 1e-9);
+
+        let soma_aliada: f64 = placar.rows.iter().filter(|r| r.ally).map(|r| r.team_share).sum();
+        assert!((soma_aliada - 1.0).abs() < 1e-9, "as fatias de um time fecham em 1");
+    }
+
+    #[test]
+    fn sem_puuid_o_primeiro_participante_e_o_jogador() {
+        // É assim que o cliente monta o histórico dele, então é o palpite certo.
+        let placar = board_from(partida_crua(), "").unwrap();
+        assert_eq!(placar.ally_total, 32000);
+        assert!(placar.win);
+        assert!(!placar.rows.iter().any(|r| r.is_me), "sem puuid, ninguém é marcado");
+    }
+
+    #[test]
+    fn partida_de_dano_zero_nao_vira_nan() {
+        // Remake: ninguém bateu em ninguém.
+        let mut crua = partida_crua();
+        for p in &mut crua.participants {
+            p.stats.total_damage_dealt_to_champions = 0;
+        }
+
+        let placar = board_from(crua, "puuid-eu").unwrap();
+        assert!(placar.rows.iter().all(|r| r.team_share == 0.0));
+        assert_eq!(placar.ally_per_minute(), 0.0);
+    }
+
+    #[test]
+    fn partida_sem_participante_nao_vira_placar() {
+        assert!(board_from(RawGame::default(), "puuid-eu").is_none());
+    }
+
+    #[test]
+    fn placar_aguenta_json_incompleto() {
+        // Sem `participantIdentities`: sai sem nome, mas sai.
+        let bruto = r#"{"gameId":5,"participants":[
+            {"participantId":1,"teamId":100,"championId":103,
+             "stats":{"win":true,"totalDamageDealtToChampions":9000}}]}"#;
+        let game: RawGame = serde_json::from_str(bruto).unwrap();
+
+        let placar = board_from(game, "puuid-eu").unwrap();
+        assert_eq!(placar.rows[0].riot_id, "");
+        assert_eq!(placar.ally_total, 9000);
+        assert!(placar.win);
+    }
+
+    #[test]
+    fn nome_antigo_serve_quando_o_riot_id_falta() {
+        let antigo = RawPlayer {
+            game_name: String::new(),
+            tag_line: String::new(),
+            summoner_name: "NomeVelho".into(),
+            puuid: String::new(),
+        };
+        assert_eq!(antigo.riot_id(), "NomeVelho");
+    }
+
+    #[test]
+    fn dano_por_minuto_do_time() {
+        let placar = board_from(partida_crua(), "puuid-eu").unwrap();
+        // 32000 em 30 minutos.
+        assert!((placar.ally_per_minute() - 1066.6666666666667).abs() < 1e-6);
     }
 
     #[test]

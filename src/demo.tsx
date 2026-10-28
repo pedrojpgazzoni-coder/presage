@@ -9,6 +9,7 @@ import ReactDOM from "react-dom/client";
 
 import { loadStaticData, type StaticData } from "./lib/ddragon";
 import ConnectionStatus from "./components/ConnectionStatus";
+import DamageBoardCard from "./components/DamageBoardCard";
 import DraftBoard from "./components/DraftBoard";
 import Home from "./components/Home";
 import GoldTracker from "./components/GoldTracker";
@@ -27,6 +28,7 @@ import type {
   BuildContext,
   CoachReport,
   ConnStatus,
+  DamageBoard,
   DraftSlot,
   DraftState,
   EngineStatus,
@@ -814,6 +816,62 @@ const perfilDemo: Profile = {
   ],
 };
 
+// O placar de dano pós-partida. No app ele sai do histórico do cliente; aqui
+// é fixo, só para a tela ter o que desenhar.
+function danoDemo(
+  championId: number,
+  riotId: string,
+  teamId: number,
+  ally: boolean,
+  isMe: boolean,
+  damage: number,
+  [kills, deaths, assists]: [number, number, number]
+) {
+  return {
+    riotId,
+    championId,
+    teamId,
+    ally,
+    isMe,
+    damage,
+    damageTaken: Math.round(damage * 0.8),
+    gold: 12800,
+    kills,
+    deaths,
+    assists,
+    teamShare: 0,
+  };
+}
+
+const danoLinhas = [
+  danoDemo(AHRI, "Presage#BR1", 100, true, true, 34210, [11, 3, 8]),
+  danoDemo(MALPHITE, "Aliado1#BR1", 100, true, false, 18940, [3, 4, 12]),
+  danoDemo(LEE_SIN, "Aliado2#BR1", 100, true, false, 16220, [7, 5, 9]),
+  danoDemo(ASHE, "Aliado3#BR1", 100, true, false, 27380, [9, 2, 6]),
+  danoDemo(THRESH, "Aliado4#BR1", 100, true, false, 7410, [1, 6, 19]),
+  danoDemo(ZED, "Rival1#BR1", 200, false, false, 29860, [8, 7, 4]),
+  danoDemo(GAREN, "Rival2#BR1", 200, false, false, 15030, [4, 6, 5]),
+  danoDemo(VIEGO, "Rival3#BR1", 200, false, false, 19770, [6, 8, 7]),
+  danoDemo(202, "Rival4#BR1", 200, false, false, 24110, [7, 5, 3]),
+  danoDemo(LUX, "Rival5#BR1", 200, false, false, 11290, [2, 9, 14]),
+];
+
+const danoBoard: DamageBoard = (() => {
+  const aliado = danoLinhas.filter((l) => l.ally).reduce((s, l) => s + l.damage, 0);
+  const inimigo = danoLinhas.filter((l) => !l.ally).reduce((s, l) => s + l.damage, 0);
+
+  return {
+    gameId: 1,
+    duration: 1884,
+    win: true,
+    allyTotal: aliado,
+    enemyTotal: inimigo,
+    rows: danoLinhas
+      .map((l) => ({ ...l, teamShare: l.damage / (l.ally ? aliado : inimigo) }))
+      .sort((a, b) => b.damage - a.damage),
+  };
+})();
+
 type View = "home" | "draft" | "lanes" | "live" | "coach" | "pool" | "overlay";
 
 const ABAS: { id: View; label: string }[] = [
@@ -911,6 +969,7 @@ function Demo() {
       ) : view === "coach" ? (
         <main className="layout layout-single">
           <section className="panel">
+            <DamageBoardCard board={danoBoard} staticData={staticData} />
             <PostGame report={review} />
           </section>
         </main>

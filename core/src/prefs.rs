@@ -35,7 +35,7 @@ impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Section::Gold => "Ouro em itens",
-            Section::Damage => "Dano que vem contra você",
+            Section::Damage => "Defesa contra o dano deles",
             Section::Objectives => "Objetivos",
             Section::Priority => "Prioridade de rota",
             Section::Skirmish => "Escaramuça",
@@ -46,7 +46,9 @@ impl Section {
     pub fn detail(self) -> &'static str {
         match self {
             Section::Gold => "a diferença entre os times, soma exata dos inventários",
-            Section::Damage => "quanto é físico, sua vida efetiva e a penetração deles",
+            Section::Damage => {
+                "quanto do dano deles é físico, sua vida efetiva e a penetração deles"
+            }
             Section::Objectives => "dragão, barão, arauto e grubs",
             Section::Priority => "qual rota vale mais agora, com o motivo",
             Section::Skirmish => "a briga que importa neste minuto",

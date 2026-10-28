@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Presage",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "identifier": "gg.presage.desktop",
   "build": {
     "frontendDist": "../dist",

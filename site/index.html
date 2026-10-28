@@ -334,18 +334,20 @@
       <section id="partida" class="feature">
         <div class="feature-copy">
           <p class="eyebrow">Partida</p>
-          <h2>Timers que dizem quando têm certeza — e quando não têm.</h2>
+          <h2>Timers em cima do mapa, não numa lista no canto.</h2>
+          <p>
+            O relógio do Barão fica na cova do Barão; o do Dragão, na do Dragão.
+            Em cima do minimapa do jogo, que é para onde seus olhos já vão —
+            em vez de empilhados num canto, pedindo mais uma leitura no meio da
+            luta.
+          </p>
           <p>
             Se o Presage viu o abate, o respawn é soma exata. Se ninguém matou
             ainda, o número vem da regra do patch e aparece marcado como
             <b>estimado</b>. Outras ferramentas mostram os dois do mesmo jeito.
           </p>
-          <p>
-            Ao lado, o ranking de prioridade: qual rota vale mais agora, com a
-            simulação de escaramuça por trás e o motivo em uma linha.
-          </p>
           <ul class="ticks">
-            <li>Dragão, Barão, Arauto e Grubs a partir dos eventos da partida</li>
+            <li>Dragão, Barão, Arauto e Grubs em cima da própria cova</li>
             <li>Alma de dragão, torres e abates por time</li>
             <li>Chance de ganhar o 2v2 ou 3v3 com os itens e níveis reais</li>
           </ul>
@@ -470,7 +472,15 @@
             Nada de "jogue mais seguro". Quatro mortes entre 21:40 e 24:10 é uma
             frase que você pode conferir sozinho.
           </p>
+          <p>
+            Junto vem o <b>dano dos dez</b>, ordenado do maior para o menor, com
+            a fatia que cada um fez do dano do próprio time. Números reais do
+            histórico do seu cliente — não estimativa. Durante a partida a API
+            da Riot não entrega o dano de ninguém, nem o seu; quem mostra esse
+            número ao vivo está chutando.
+          </p>
           <ul class="ticks">
+            <li>Dano de todos na partida, com dano por minuto e fatia do time</li>
             <li>Tropas, participação em abates e nível contra o seu oponente</li>
             <li>As janelas em que as mortes vieram em sequência</li>
             <li>Vantagem de ouro que existiu e foi devolvida</li>
@@ -522,6 +532,22 @@
         <p class="eyebrow">Diferença</p>
         <h2>O que o Presage faz e os outros não</h2>
         <div class="cards">
+          <article class="card">
+            <h3>A win condition da partida</h3>
+            <p>
+              Em que fase vocês são mais fortes, o que fazer dentro dela e o que
+              entrega o jogo — em uma frase, antes do primeiro minuto. Não é mais
+              uma porcentagem: é o plano que sai dela.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Abriu, já sabe quem você é</h3>
+            <p>
+              Nick, elo e as últimas vinte partidas na primeira tela, sem você
+              digitar nada. Sai do seu próprio cliente, em 127.0.0.1 — não passa
+              pela internet nem por servidor nosso.
+            </p>
+          </article>
           <article class="card">
             <h3>A build muda no meio da partida</h3>
             <p>

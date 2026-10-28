@@ -2201,3 +2201,124 @@ h3 {
   right: auto !important;
   bottom: auto !important;
 }
+
+/* ---- placar de dano pos-partida ---- */
+
+.dano {
+  margin-bottom: 26px;
+}
+
+.dano-times {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 14px 0 16px;
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.dano-times b {
+  color: var(--bone);
+  font-size: 14px;
+}
+
+.dano-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dano-linha {
+  display: grid;
+  grid-template-columns: 26px minmax(96px, 1fr) 62px minmax(80px, 2fr) 78px 54px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Sua linha fica marcada: num placar de dez, achar a sua e a primeira coisa
+   que a pessoa faz. */
+.dano-linha.eu {
+  border-color: var(--halo-edge);
+  background: var(--halo-soft);
+}
+
+.dano-quem {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dano-quem b {
+  font-size: 12px;
+}
+
+.dano-quem small,
+.dano-num small {
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.dano-quem small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dano-kda {
+  font-size: 11px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.dano-barra {
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.dano-barra span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+/* Aliado e inimigo ganham cores diferentes: a lista mistura os dois times de
+   proposito, ordenada por dano, e a cor e o que separa os lados. */
+.dano-linha.aliado .dano-barra span {
+  background: linear-gradient(90deg, #4c6ef5, #7b6cff);
+}
+
+.dano-linha.inimigo .dano-barra span {
+  background: linear-gradient(90deg, #a13b5a, #e05c7e);
+}
+
+.dano-num {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dano-num b {
+  font-size: 12px;
+}
+
+@media (max-width: 880px) {
+  .dano-linha {
+    grid-template-columns: 26px 1fr 54px 70px;
+  }
+
+  .dano-barra,
+  .dano-linha .dano-num:last-child {
+    display: none;
+  }
+}
