@@ -34,6 +34,7 @@ use watcher::Shared;
 const EVENT_ENGINE: &str = "presage://engine";
 const POOL_CACHE: &str = "pool.json";
 const PREFS_CACHE: &str = "overlay.json";
+const ONBOARDING_CACHE: &str = "primeira-vez.json";
 /// Base de partidas agregada. Não vem no instalador; quando existir, é aqui
 /// que ela mora.
 const DATASET_CACHE: &str = "base-de-partidas.json";
@@ -304,6 +305,31 @@ fn set_pool(pool: Pool, shared: tauri::State<'_, Arc<Shared>>) -> Result<(), Str
     Ok(())
 }
 
+/// A primeira execução já foi respondida?
+///
+/// Guardado em arquivo, e não deduzido de "a pool tem campeões": quem esvazia
+/// a pool para refazer não quer a tela de boas-vindas de volta.
+#[tauri::command]
+fn onboarding_done(shared: tauri::State<'_, Arc<Shared>>) -> bool {
+    *shared.onboarding.lock().unwrap()
+}
+
+#[tauri::command]
+fn finish_onboarding(shared: tauri::State<'_, Arc<Shared>>) -> Result<(), String> {
+    storage::write_json(ONBOARDING_CACHE, &true).map_err(|err| err.to_string())?;
+    *shared.onboarding.lock().unwrap() = true;
+    Ok(())
+}
+
+/// Nick, rank e últimas partidas, lidos do cliente local.
+///
+/// Nada aqui passa pela Riot API: é o próprio cliente do jogador servindo os
+/// dados dele em `127.0.0.1`. Por isso funciona hoje, sem chave de produção.
+#[tauri::command]
+fn lcu_profile(shared: tauri::State<'_, Arc<Shared>>) -> Option<lcu::history::Profile> {
+    shared.profile.lock().unwrap().clone()
+}
+
 #[tauri::command]
 fn get_overlay_prefs(shared: tauri::State<'_, Arc<Shared>>) -> OverlayPrefs {
     shared.overlay_prefs.read().unwrap().clone()
@@ -466,6 +492,10 @@ fn montar(com_atualizador: bool) -> tauri::Builder<tauri::Wry> {
                 *shared.last_review.lock().unwrap() = Some(saved);
             }
 
+            if storage::read_json::<bool>(ONBOARDING_CACHE).unwrap_or(false) {
+                *shared.onboarding.lock().unwrap() = true;
+            }
+
             if let Some(saved) = storage::read_json::<OverlayPrefs>(PREFS_CACHE) {
                 tracing::info!(
                     escondidas = saved.hidden.len(),
@@ -555,6 +585,9 @@ fn montar(com_atualizador: bool) -> tauri::Builder<tauri::Wry> {
             pool_suggestions,
             rune_plan,
             get_overlay_prefs,
-            set_overlay_prefs
+            set_overlay_prefs,
+            lcu_profile,
+            onboarding_done,
+            finish_onboarding
         ])
 }

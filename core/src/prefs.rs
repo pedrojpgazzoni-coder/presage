@@ -55,6 +55,55 @@ impl Section {
     }
 }
 
+/// Onde ficam os relógios de objetivo, em cima do minimapa do jogo.
+///
+/// O tamanho do minimapa é escolhido por quem joga, nas opções do League, e
+/// **não existe jeito de ler isso de fora** — a Live Client Data API não diz, e
+/// ler a memória do jogo está fora de questão. Então o número mora aqui e quem
+/// ajusta é o jogador, uma vez: ele arrasta até os relógios caírem em cima das
+/// covas do Barão e do Dragão, e pronto.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MapTimers {
+    /// Lado do quadrado do minimapa, em pixels.
+    pub size: u32,
+    /// Distância da borda direita da tela.
+    pub right: u32,
+    /// Distância da borda de baixo.
+    pub bottom: u32,
+}
+
+/// Medidas de um minimapa em tamanho médio a 1920x1080. É daqui que o jogador
+/// parte, não de zero.
+impl Default for MapTimers {
+    fn default() -> Self {
+        MapTimers {
+            size: 330,
+            right: 14,
+            bottom: 14,
+        }
+    }
+}
+
+impl MapTimers {
+    /// Limites de arrasto. Um minimapa menor que isso não existe, e maior que
+    /// isso cobriria meia tela — deixar o slider ir além só gera configuração
+    /// quebrada.
+    pub const MIN_SIZE: u32 = 180;
+    pub const MAX_SIZE: u32 = 560;
+    pub const MAX_OFFSET: u32 = 400;
+
+    /// Recorta valores impossíveis em vez de recusá-los: um arquivo de
+    /// configuração velho, ou editado à mão, continua abrindo o app.
+    pub fn clamped(self) -> Self {
+        MapTimers {
+            size: self.size.clamp(Self::MIN_SIZE, Self::MAX_SIZE),
+            right: self.right.min(Self::MAX_OFFSET),
+            bottom: self.bottom.min(Self::MAX_OFFSET),
+        }
+    }
+}
+
 /// Seção escondida pelo jogador.
 ///
 /// Guardamos o que está **desligado**, não o que está ligado. A diferença
@@ -65,6 +114,8 @@ impl Section {
 #[serde(rename_all = "camelCase", default)]
 pub struct OverlayPrefs {
     pub hidden: Vec<Section>,
+    /// Onde os relógios caem em cima do minimapa.
+    pub map: MapTimers,
 }
 
 impl OverlayPrefs {
@@ -179,6 +230,33 @@ mod tests {
         assert_eq!(voltou, p);
         assert!(!voltou.shows(Section::NextItem));
         assert!(voltou.shows(Section::Damage));
+    }
+
+    #[test]
+    fn o_minimapa_tem_medida_de_partida() {
+        let m = MapTimers::default();
+        assert_eq!(m, m.clamped(), "o padrão não pode cair fora dos limites");
+        assert!(m.size >= MapTimers::MIN_SIZE && m.size <= MapTimers::MAX_SIZE);
+    }
+
+    #[test]
+    fn configuracao_impossivel_e_recortada_em_vez_de_recusada() {
+        let absurdo = MapTimers { size: 9000, right: 9000, bottom: 0 };
+        let certo = absurdo.clamped();
+        assert_eq!(certo.size, MapTimers::MAX_SIZE);
+        assert_eq!(certo.right, MapTimers::MAX_OFFSET);
+        assert_eq!(certo.bottom, 0, "zero é válido: minimapa colado na borda");
+
+        let minusculo = MapTimers { size: 1, right: 0, bottom: 0 }.clamped();
+        assert_eq!(minusculo.size, MapTimers::MIN_SIZE);
+    }
+
+    #[test]
+    fn arquivo_antigo_ganha_o_minimapa_padrao() {
+        // Salvo antes de `map` existir: tem de abrir com a medida de partida.
+        let antigo = r#"{"hidden":["gold"]}"#;
+        let p: OverlayPrefs = serde_json::from_str(antigo).unwrap();
+        assert_eq!(p.map, MapTimers::default());
     }
 
     #[test]

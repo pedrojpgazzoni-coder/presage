@@ -29,7 +29,19 @@ body {
   overflow: hidden;
 }
 
+/* A janela cobre a tela inteira. A camada em si é invisível e atravessável;
+   quem desenha são os filhos, cada um ancorado no seu canto. */
+.hud-tela {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
 .hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 276px;
   margin: 10px;
   padding: 10px 12px;
   border-radius: 8px;
@@ -142,4 +154,144 @@ body {
   float: right;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- relogios em cima do minimapa ---- */
+
+/* O quadrado que cobre o minimapa do jogo. Invisivel no jogo: so as covas
+   aparecem. O contorno so existe no modo de ajuste. */
+.mapa {
+  position: absolute;
+  pointer-events: none;
+}
+
+.mapa.guia {
+  border: 1px dashed rgba(124, 138, 255, 0.75);
+  border-radius: 3px;
+  background: rgba(124, 138, 255, 0.07);
+}
+
+/* Centrada na cova: o relogio cai em cima do objetivo, nao ao lado dele. */
+.cova {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 6px 3px;
+  border-radius: 5px;
+  background: rgba(8, 10, 14, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.cova-nome {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.55);
+}
+
+.cova-tempo {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--bone);
+}
+
+.cova-tempo i {
+  font-style: normal;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  margin-left: 3px;
+  color: rgba(226, 232, 240, 0.4);
+}
+
+/* Perto de nascer, o relogio esquenta. Pronto, ele acende de vez. */
+.cova.perto {
+  border-color: rgba(246, 173, 85, 0.6);
+}
+
+.cova.perto .cova-tempo {
+  color: #f6ad55;
+}
+
+.cova.pronto {
+  border-color: rgba(104, 211, 145, 0.75);
+  background: rgba(14, 34, 22, 0.86);
+}
+
+.cova.pronto .cova-tempo {
+  color: #68d391;
+}
+
+/* ---- ajuste do minimapa, no painel ---- */
+
+.mapa-ajuste {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.mapa-campos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.mapa-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mapa-campo label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mapa-campo label b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.mapa-campo input[type="range"] {
+  width: 100%;
+  accent-color: var(--halo);
+}
+
+/* Uma Summoner's Rift de mentira, para o jogador ver onde os relogios caem
+   sem precisar entrar numa partida. */
+.mapa-previa {
+  position: relative;
+  margin-top: 18px;
+  aspect-ratio: 1;
+  max-width: 300px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 7px),
+      rgba(124, 138, 255, 0.16) calc(50% - 7px),
+      rgba(124, 138, 255, 0.16) calc(50% + 7px),
+      transparent calc(50% + 7px)
+    ),
+    rgba(255, 255, 255, 0.02);
+}
+
+.mapa-previa .mapa {
+  position: absolute;
+  inset: 0;
+  width: auto !important;
+  height: auto !important;
+  right: auto !important;
+  bottom: auto !important;
 }

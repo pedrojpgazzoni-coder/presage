@@ -1,4 +1,4 @@
-﻿/* Paleta do Presage.
+/* Paleta do Presage.
    Regra que organiza tudo: a cor da marca nunca carrega significado de dado.
    O violeta é identidade — seleção, foco, a própria marca. Número bom é menta,
    número ruim é coral, atenção é âmbar. Assim nenhuma cor diz duas coisas.
@@ -1832,4 +1832,372 @@ h3 {
 .niveis small i {
   font-style: normal;
   opacity: 0.6;
+}
+
+/* ---- primeira execucao ---- */
+
+.onboarding-abertura {
+  text-align: center;
+  padding: 26px 20px 30px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 26px;
+}
+
+.onboarding-abertura h1 {
+  font-size: 26px;
+  margin: 14px 0 10px;
+}
+
+.onboarding-abertura p {
+  max-width: 54ch;
+  margin: 0 auto 8px;
+  color: var(--dim);
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.onboarding-pe {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.onboarding-pe button {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 11px 22px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--dim);
+}
+
+.onboarding-pe .primary {
+  background: var(--halo);
+  border-color: var(--halo);
+  color: #0b0d18;
+}
+
+.onboarding-pe .primary:disabled {
+  background: transparent;
+  border-color: var(--line);
+  color: #4a5370;
+  cursor: default;
+}
+
+/* ---- tela inicial ---- */
+
+.home-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.home-head h2 {
+  margin: 0 0 3px;
+}
+
+.rank {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rank b {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+.rank small {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.home-resumo {
+  font-size: 13px;
+  color: var(--dim);
+  margin: 14px 0 0;
+}
+
+.partidas {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* A faixa colorida na borda diz o resultado antes de qualquer numero. */
+.partida {
+  display: grid;
+  grid-template-columns: 26px 1fr repeat(4, minmax(60px, auto));
+  align-items: center;
+  gap: 14px;
+  background: var(--rise);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 7px;
+  padding: 10px 14px;
+}
+
+.partida.venceu {
+  border-left-color: var(--mint);
+}
+
+.partida.perdeu {
+  border-left-color: var(--coral);
+}
+
+.partida-quem,
+.partida-kda,
+.partida-num {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.partida-kda,
+.partida-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.partida b {
+  font-size: 13px;
+}
+
+.partida small {
+  font-size: 10px;
+  color: var(--dim);
+}
+
+/* ---- win condition ---- */
+
+.wincon {
+  background: var(--rise);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 16px 18px 18px;
+  margin-bottom: 22px;
+}
+
+.wincon-head {
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 4px 0 14px;
+  color: var(--dim);
+}
+
+.wincon-head.on {
+  color: var(--bone);
+}
+
+.wincon-fases {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.wincon-fases .fase {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 7px 4px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  color: #566077;
+}
+
+/* A fase forte acende. A opacidade vem da confianca, entao uma janela fraca
+   acende menos — o desenho diz o mesmo que o numero. */
+.wincon-fases .fase.on {
+  background: color-mix(in srgb, var(--halo) 22%, transparent);
+  border-color: var(--halo);
+  color: var(--bone);
+}
+
+.wincon-listas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.wincon-lista h4 {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 7px;
+}
+
+.wincon-lista ul {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wincon-lista li {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+
+@media (max-width: 760px) {
+  .wincon-listas {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- relogios em cima do minimapa ---- */
+
+/* O quadrado que cobre o minimapa do jogo. Invisivel no jogo: so as covas
+   aparecem. O contorno so existe no modo de ajuste. */
+.mapa {
+  position: absolute;
+  pointer-events: none;
+}
+
+.mapa.guia {
+  border: 1px dashed rgba(124, 138, 255, 0.75);
+  border-radius: 3px;
+  background: rgba(124, 138, 255, 0.07);
+}
+
+/* Centrada na cova: o relogio cai em cima do objetivo, nao ao lado dele. */
+.cova {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 6px 3px;
+  border-radius: 5px;
+  background: rgba(8, 10, 14, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.cova-nome {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.55);
+}
+
+.cova-tempo {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--bone);
+}
+
+.cova-tempo i {
+  font-style: normal;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  margin-left: 3px;
+  color: rgba(226, 232, 240, 0.4);
+}
+
+/* Perto de nascer, o relogio esquenta. Pronto, ele acende de vez. */
+.cova.perto {
+  border-color: rgba(246, 173, 85, 0.6);
+}
+
+.cova.perto .cova-tempo {
+  color: #f6ad55;
+}
+
+.cova.pronto {
+  border-color: rgba(104, 211, 145, 0.75);
+  background: rgba(14, 34, 22, 0.86);
+}
+
+.cova.pronto .cova-tempo {
+  color: #68d391;
+}
+
+/* ---- ajuste do minimapa, no painel ---- */
+
+.mapa-ajuste {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.mapa-campos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.mapa-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mapa-campo label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mapa-campo label b {
+  color: var(--bone);
+  font-variant-numeric: tabular-nums;
+}
+
+.mapa-campo input[type="range"] {
+  width: 100%;
+  accent-color: var(--halo);
+}
+
+/* Uma Summoner's Rift de mentira, para o jogador ver onde os relogios caem
+   sem precisar entrar numa partida. */
+.mapa-previa {
+  position: relative;
+  margin-top: 18px;
+  aspect-ratio: 1;
+  max-width: 300px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background:
+    linear-gradient(
+      to bottom right,
+      transparent calc(50% - 7px),
+      rgba(124, 138, 255, 0.16) calc(50% - 7px),
+      rgba(124, 138, 255, 0.16) calc(50% + 7px),
+      transparent calc(50% + 7px)
+    ),
+    rgba(255, 255, 255, 0.02);
+}
+
+/* Na previa o quadrado preenche a caixa, em vez de usar os pixels da tela do
+   jogador: aqui o que importa e o arranjo, nao a medida. */
+.mapa-previa .mapa {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  right: auto !important;
+  bottom: auto !important;
 }

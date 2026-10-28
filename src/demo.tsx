@@ -10,6 +10,7 @@ import ReactDOM from "react-dom/client";
 import { loadStaticData, type StaticData } from "./lib/ddragon";
 import ConnectionStatus from "./components/ConnectionStatus";
 import DraftBoard from "./components/DraftBoard";
+import Home from "./components/Home";
 import GoldTracker from "./components/GoldTracker";
 import LaneAnalysis from "./components/LaneAnalysis";
 import LiveBuild from "./components/LiveBuild";
@@ -20,6 +21,7 @@ import PoolBuilder from "./components/PoolBuilder";
 import PostGame from "./components/PostGame";
 import Runas from "./components/Runas";
 import RecommendationPanel from "./components/RecommendationPanel";
+import { MAPA_PADRAO } from "./lib/types";
 import type {
   BanSuggestion,
   BuildContext,
@@ -36,8 +38,10 @@ import type {
   LiveSnapshot,
   MinimaxPick,
   OverlayPrefs,
+  PastGame,
   Pool,
   PoolCandidate,
+  Profile,
   RunePlan,
   ScoredChampion,
 } from "./lib/types";
@@ -413,6 +417,22 @@ const curva = (a: number, b: number, c: number) =>
 const laneReport: LaneReport = {
   source: "partida",
   rolesAssumed: false,
+  winCondition: {
+    // Coerente com a curva do 5v5 logo abaixo (44% / 46% / 52%): no app esta
+    // leitura é calculada dela, então as duas nunca discordam.
+    headline: "Vocês são mais fortes no late game: 52% lá, 44% no early game",
+    window: "late game",
+    confidence: 1,
+    play: [
+      "Joguem para o tempo. Farmem seguro, dividam o mapa e só briguem com visão",
+      "Joguem pela JG: Lee Sin tem 57% contra Viego",
+    ],
+    avoid: [
+      "Não aceitem luta antes do nível 6 — vocês perdem essa fase",
+      "Não deixem a TOP sozinha: Garen tem 43% contra Malphite",
+    ],
+    fromData: false,
+  },
   team: {
     ours: [GAREN, LEE_SIN, AHRI, ASHE, THRESH],
     theirs: [MALPHITE, VIEGO, ZED, 202, 117],
@@ -737,9 +757,67 @@ const runasDemo: RunePlan = {
   },
 };
 
-type View = "draft" | "lanes" | "live" | "coach" | "pool" | "overlay";
+// Histórico de exemplo. As partidas desta lista existem para mostrar a forma
+// da tela — no app elas vêm do cliente, em 127.0.0.1.
+const HORA = 3_600_000;
+
+function partidaDemo(
+  gameId: number,
+  championId: number,
+  lane: string,
+  win: boolean,
+  [kills, deaths, assists]: [number, number, number],
+  cs: number,
+  damage: number,
+  minutos: number,
+  hoursAgo: number
+): PastGame {
+  return {
+    gameId,
+    championId,
+    lane,
+    win,
+    kills,
+    deaths,
+    assists,
+    cs,
+    damage,
+    duration: Math.round(minutos * 60),
+    queueId: 420,
+    playedAt: Date.now() - hoursAgo * HORA,
+    gold: Math.round(minutos * 420),
+    damageTaken: Math.round(damage * 0.7),
+    vision: 18,
+    level: 16,
+  };
+}
+
+const perfilDemo: Profile = {
+  riotId: "Presage#BR1",
+  level: 312,
+  rank: {
+    queue: "RANKED_SOLO_5x5",
+    tier: "ESMERALDA",
+    division: "II",
+    points: 64,
+    wins: 118,
+    losses: 103,
+  },
+  matches: [
+    partidaDemo(1, AHRI, "MIDDLE", true, [11, 3, 8], 268, 34210, 31.4, 0.4),
+    partidaDemo(2, SYNDRA, "MIDDLE", false, [4, 7, 5], 241, 26880, 29.8, 2),
+    partidaDemo(3, ORIANNA, "MIDDLE", true, [8, 2, 14], 302, 31540, 35.1, 5),
+    partidaDemo(4, AHRI, "MIDDLE", true, [14, 5, 6], 254, 38760, 28.6, 26),
+    partidaDemo(5, ZED, "MIDDLE", false, [6, 9, 2], 229, 22410, 26.3, 29),
+    partidaDemo(6, LUX, "MIDDLE", true, [9, 4, 11], 198, 29330, 33.0, 52),
+    partidaDemo(7, SYNDRA, "MIDDLE", false, [3, 8, 4], 212, 19870, 24.1, 74),
+  ],
+};
+
+type View = "home" | "draft" | "lanes" | "live" | "coach" | "pool" | "overlay";
 
 const ABAS: { id: View; label: string }[] = [
+  { id: "home", label: "Início" },
   { id: "draft", label: "Draft" },
   { id: "lanes", label: "Rotas" },
   { id: "live", label: "Partida" },
@@ -749,10 +827,13 @@ const ABAS: { id: View; label: string }[] = [
 ];
 
 function Demo() {
-  const [view, setView] = useState<View>("draft");
+  const [view, setView] = useState<View>("home");
   const [staticData, setStaticData] = useState<StaticData | null>(null);
   const [pool, setPool] = useState<Pool>(initialPool);
-  const [overlayPrefs, setOverlayPrefs] = useState<OverlayPrefs>({ hidden: [] });
+  const [overlayPrefs, setOverlayPrefs] = useState<OverlayPrefs>({
+    hidden: [],
+    map: MAPA_PADRAO,
+  });
   const [seconds, setSeconds] = useState(21);
 
   useEffect(() => {
@@ -792,7 +873,18 @@ function Demo() {
         da Riot aberto — o app real preenche tudo isto sozinho.
       </div>
 
-      {view === "pool" ? (
+      {view === "home" ? (
+        <main className="layout layout-single">
+          <section className="panel">
+            <Home
+              profile={perfilDemo}
+              status={status}
+              staticData={staticData}
+              onAbrirPool={() => setView("pool")}
+            />
+          </section>
+        </main>
+      ) : view === "pool" ? (
         <main className="layout layout-single">
           <section className="panel">
             <PoolBuilder

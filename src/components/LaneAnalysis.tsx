@@ -1,5 +1,6 @@
 import type { StaticData } from "../lib/ddragon";
 import type { LaneReport, LaneOutlook, LevelOdds, Skirmish } from "../lib/types";
+import WinConditionCard from "./WinConditionCard";
 
 interface Props {
   report: LaneReport | null;
@@ -126,6 +127,10 @@ export default function LaneAnalysis({ report, staticData }: Props) {
 
   return (
     <div className="lanes">
+      {/* A win condition vem primeiro: é a leitura do jogo. As rotas e as
+          escaramuças abaixo são a conta que a sustenta. */}
+      <WinConditionCard wincon={report.winCondition} />
+
       <div className="panel-head">
         <div>
           <h2>Chance de você ganhar cada rota</h2>

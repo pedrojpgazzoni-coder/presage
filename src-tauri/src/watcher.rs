@@ -37,6 +37,11 @@ pub const EVENT_REVIEW: &str = "presage://review";
 /// O jogador mexeu no que o overlay mostra. O overlay escuta e se redesenha
 /// na hora, sem precisar fechar nada.
 pub const EVENT_PREFS: &str = "presage://prefs";
+/// Nick, rank e histórico chegaram do cliente.
+pub const EVENT_PROFILE: &str = "presage://profile";
+
+/// Quantas partidas o histórico traz.
+const HISTORICO: usize = 20;
 
 const POLL_CHAMP_SELECT: Duration = Duration::from_millis(350);
 const POLL_LIVE: Duration = Duration::from_millis(1000);
@@ -74,6 +79,10 @@ pub struct Shared {
     /// Base de partidas agregada. `None` até existir um pipeline que a produza
     /// — e `None` é o estado honesto, não um defeito.
     pub dataset: RwLock<Option<Dataset>>,
+    /// Nick, rank e últimas partidas, lidos do cliente local.
+    pub profile: Mutex<Option<crate::lcu::history::Profile>>,
+    /// A primeira execução já foi respondida.
+    pub onboarding: Mutex<bool>,
 }
 
 impl Shared {
@@ -92,6 +101,8 @@ impl Shared {
             recording: Mutex::new(Recording::default()),
             last_review: Mutex::new(None),
             dataset: RwLock::new(None),
+            profile: Mutex::new(None),
+            onboarding: Mutex::new(false),
         }
     }
 }
@@ -166,6 +177,22 @@ pub async fn run(app: AppHandle, shared: Arc<Shared>) {
                             });
                         }
                     }
+
+                    // Nick, rank e histórico, do próprio cliente. É o que a
+                    // tela inicial mostra, e não depende de chave nenhuma.
+                    match crate::lcu::history::profile(&c, HISTORICO).await {
+                        Ok(perfil) => {
+                            tracing::info!(
+                                quem = %perfil.riot_id,
+                                partidas = perfil.matches.len(),
+                                "perfil carregado do cliente"
+                            );
+                            let _ = app.emit(EVENT_PROFILE, &perfil);
+                            *shared.profile.lock().unwrap() = Some(perfil);
+                        }
+                        Err(err) => tracing::warn!(%err, "não consegui ler o perfil"),
+                    }
+
                     client = Some(c);
                 }
                 Err(err) => {
@@ -195,6 +222,8 @@ pub async fn run(app: AppHandle, shared: Arc<Shared>) {
                 tracing::debug!(%err, "perdemos o cliente, redescobrindo");
                 client = None;
                 summoner = None;
+                // O perfil fica: nome e histórico não deixam de ser verdade
+                // porque o cliente fechou, e apagá-los pisca a tela à toa.
                 *shared.draft.lock().unwrap() = None;
                 continue;
             }

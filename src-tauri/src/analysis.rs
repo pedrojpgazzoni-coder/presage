@@ -16,6 +16,7 @@ use presage_core::engine::champion::{ChampionIndex, Role};
 use presage_core::engine::items::ItemIndex;
 use presage_core::engine::lanes::{self, LaneOutlook, Lineup, Skirmish};
 use presage_core::engine::stats::StatsStore;
+use presage_core::engine::wincon::{self, WinCondition};
 use presage_core::live::LiveGame;
 
 /// Nível de referência antes da partida começar. É no 6 que as rotas se
@@ -34,6 +35,9 @@ pub struct LaneReport {
     pub team: Option<lanes::TeamOutlook>,
     pub lanes: Vec<LaneOutlook>,
     pub skirmishes: Vec<Skirmish>,
+    /// Por onde este jogo é ganho. Sai da curva de fases do 5v5, então é `None`
+    /// enquanto os dois lados não estiverem completos o bastante para ela.
+    pub win_condition: Option<WinCondition>,
     /// `draft` ou `partida`.
     pub source: &'static str,
     /// Verdadeiro quando alguma rota saiu da ordem do draft em vez de vir do
@@ -128,10 +132,19 @@ pub fn report(
         return None;
     }
 
+    let team = lanes::team_outlook(&ours, &theirs, champions, items);
+    let lane_list = lanes::lane_outlooks(&ours, &theirs, champions, items, store);
+    let skirmish_list = lanes::skirmishes(&ours, &theirs, champions, items);
+
+    let win_condition = team
+        .as_ref()
+        .and_then(|t| wincon::win_condition(t, &lane_list, &skirmish_list, champions));
+
     Some(LaneReport {
-        team: lanes::team_outlook(&ours, &theirs, champions, items),
-        lanes: lanes::lane_outlooks(&ours, &theirs, champions, items, store),
-        skirmishes: lanes::skirmishes(&ours, &theirs, champions, items),
+        team,
+        lanes: lane_list,
+        skirmishes: skirmish_list,
+        win_condition,
         source,
         roles_assumed: assumed,
     })

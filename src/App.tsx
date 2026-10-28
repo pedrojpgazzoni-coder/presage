@@ -19,16 +19,19 @@ import type {
   OverlayPrefs,
   Pool,
   PoolCandidate,
+  Profile,
   Role,
   RunePlan,
   ScoredChampion,
 } from "./lib/types";
-import { ROLE_TO_LCU } from "./lib/types";
+import { MAPA_PADRAO, ROLE_TO_LCU } from "./lib/types";
 import Atualizacao from "./components/Atualizacao";
 import ConnectionStatus from "./components/ConnectionStatus";
 import DraftBoard from "./components/DraftBoard";
 import GoldTracker from "./components/GoldTracker";
+import Home from "./components/Home";
 import LaneAnalysis from "./components/LaneAnalysis";
+import Onboarding from "./components/Onboarding";
 import LiveBuild from "./components/LiveBuild";
 import Logo from "./components/Logo";
 import LiveOverview from "./components/LiveOverview";
@@ -43,11 +46,26 @@ const EVENT_DRAFT = "presage://draft";
 const EVENT_ENGINE = "presage://engine";
 const EVENT_LIVE = "presage://live";
 const EVENT_REVIEW = "presage://review";
+const EVENT_PROFILE = "presage://profile";
 
-type View = "draft" | "lanes" | "live" | "coach" | "pool" | "overlay";
+type View = "home" | "draft" | "lanes" | "live" | "coach" | "pool" | "overlay";
+
+const ABAS: { id: View; label: string }[] = [
+  { id: "home", label: "Início" },
+  { id: "draft", label: "Draft" },
+  { id: "lanes", label: "Rotas" },
+  { id: "live", label: "Partida" },
+  { id: "coach", label: "Pós-jogo" },
+  { id: "pool", label: "Pool" },
+  { id: "overlay", label: "Overlay" },
+];
 
 export default function App() {
-  const [view, setView] = useState<View>("draft");
+  const [view, setView] = useState<View>("home");
+  const [profile, setProfile] = useState<Profile | null>(null);
+  // `null` enquanto não sabemos: mostrar a tela de boas-vindas por um instante
+  // para quem já a respondeu seria pior que esperar a resposta.
+  const [primeiraVez, setPrimeiraVez] = useState<boolean | null>(null);
   const [status, setStatus] = useState<ConnStatus | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [engine, setEngine] = useState<EngineStatus | null>(null);
@@ -62,7 +80,10 @@ export default function App() {
   const [goldReport, setGoldReport] = useState<GoldReport | null>(null);
   const [review, setReview] = useState<CoachReport | null>(null);
   const [runas, setRunas] = useState<RunePlan | null>(null);
-  const [overlayPrefs, setOverlayPrefs] = useState<OverlayPrefs>({ hidden: [] });
+  const [overlayPrefs, setOverlayPrefs] = useState<OverlayPrefs>({
+    hidden: [],
+    map: MAPA_PADRAO,
+  });
   const [staticData, setStaticData] = useState<StaticData | null>(null);
   const [staticError, setStaticError] = useState<string | null>(null);
 
@@ -94,6 +115,11 @@ export default function App() {
     invoke<LiveSnapshot | null>("get_live").then(setLive).catch(() => void 0);
     invoke<CoachReport | null>("last_review").then(setReview).catch(() => void 0);
     invoke<OverlayPrefs>("get_overlay_prefs").then(setOverlayPrefs).catch(() => void 0);
+    invoke<Profile | null>("lcu_profile").then(setProfile).catch(() => void 0);
+    invoke<boolean>("onboarding_done")
+      .then((feito) => setPrimeiraVez(!feito))
+      // Sem backend (a demonstração roda sem Tauri), não há primeira vez.
+      .catch(() => setPrimeiraVez(false));
 
     const unlisteners = [
       listen<ConnStatus>(EVENT_STATUS, (event) => setStatus(event.payload)),
@@ -105,6 +131,7 @@ export default function App() {
         setReview(event.payload);
         setView("coach");
       }),
+      listen<Profile>(EVENT_PROFILE, (event) => setProfile(event.payload)),
       listen<DraftState | null>(EVENT_DRAFT, (event) => {
         setDraft(event.payload);
         clockAnchor.current = event.payload
@@ -210,6 +237,23 @@ export default function App() {
     []
   );
 
+  // O painel acompanha a partida: o draft começa, a tela vira draft; o jogo
+  // começa, vira partida; acabou, volta para o início. Quem está jogando não
+  // deveria precisar clicar numa aba para ver o que está acontecendo agora.
+  //
+  // Clicar numa aba continua valendo — até a fase mudar de novo.
+  useEffect(() => {
+    if (draft) setView("draft");
+  }, [draft !== null]);
+
+  useEffect(() => {
+    if (live) setView("live");
+  }, [live !== null]);
+
+  useEffect(() => {
+    if (!draft && !live) setView((atual) => (atual === "draft" || atual === "live" ? "home" : atual));
+  }, [draft, live]);
+
   const secondsLeft = useMemo(() => {
     const anchor = clockAnchor.current;
     if (!anchor) return null;
@@ -221,11 +265,37 @@ export default function App() {
     invoke("set_pool", { pool: next }).catch(() => void 0);
   }
 
+  function terminarPrimeiraVez() {
+    setPrimeiraVez(false);
+    setView("home");
+    invoke("finish_onboarding").catch(() => void 0);
+  }
+
   function saveOverlayPrefs(next: OverlayPrefs) {
     // Otimista: o clique responde na hora e o backend confirma depois. Travar
     // um checkbox esperando ida e volta ao disco seria lento à toa.
     setOverlayPrefs(next);
     invoke("set_overlay_prefs", { prefs: next }).catch(() => void 0);
+  }
+
+  // Antes de qualquer outra coisa: a primeira execução toma a tela inteira,
+  // sem abas. Quem acabou de instalar não tem o que navegar ainda.
+  if (primeiraVez === true) {
+    return (
+      <div className="app">
+        <main className="layout layout-single">
+          <section className="panel">
+            <Onboarding
+              pool={pool}
+              staticData={staticData}
+              onChange={savePool}
+              onSuggest={pedirSugestoes}
+              onPronto={terminarPrimeiraVez}
+            />
+          </section>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -240,49 +310,19 @@ export default function App() {
           </span>
         </div>
         <nav className="nav">
-          <button
-            type="button"
-            className={view === "draft" ? "on" : ""}
-            onClick={() => setView("draft")}
-          >
-            Draft
-          </button>
-          <button
-            type="button"
-            className={view === "lanes" ? "on" : ""}
-            onClick={() => setView("lanes")}
-          >
-            Rotas
-          </button>
-          <button
-            type="button"
-            className={view === "live" ? "on" : ""}
-            onClick={() => setView("live")}
-          >
-            Partida
-            {live && <span className="nav-dot" />}
-          </button>
-          <button
-            type="button"
-            className={view === "coach" ? "on" : ""}
-            onClick={() => setView("coach")}
-          >
-            Pós-jogo
-          </button>
-          <button
-            type="button"
-            className={view === "pool" ? "on" : ""}
-            onClick={() => setView("pool")}
-          >
-            Pool
-          </button>
-          <button
-            type="button"
-            className={view === "overlay" ? "on" : ""}
-            onClick={() => setView("overlay")}
-          >
-            Overlay
-          </button>
+          {ABAS.map((aba) => (
+            <button
+              type="button"
+              key={aba.id}
+              className={view === aba.id ? "on" : ""}
+              onClick={() => setView(aba.id)}
+            >
+              {aba.label}
+              {/* O ponto marca onde algo está acontecendo agora. */}
+              {aba.id === "live" && live && <span className="nav-dot" />}
+              {aba.id === "draft" && draft && <span className="nav-dot" />}
+            </button>
+          ))}
         </nav>
         <ConnectionStatus status={status} />
       </header>
@@ -296,7 +336,18 @@ export default function App() {
         </div>
       )}
 
-      {view === "pool" ? (
+      {view === "home" ? (
+        <main className="layout layout-single">
+          <section className="panel">
+            <Home
+              profile={profile}
+              status={status}
+              staticData={staticData}
+              onAbrirPool={() => setView("pool")}
+            />
+          </section>
+        </main>
+      ) : view === "pool" ? (
         <main className="layout layout-single">
           <section className="panel">
             <PoolBuilder

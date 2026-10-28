@@ -27,11 +27,45 @@ pub fn interact_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyO)
 }
 
-/// Deixa a janela atravessável antes de qualquer exibição.
+/// Deixa a janela atravessável e do tamanho da tela, antes de qualquer
+/// exibição.
+///
+/// Cobrir a tela inteira é o que permite ancorar coisa em mais de um canto —
+/// o cartão em cima à esquerda e os relógios em cima do minimapa, embaixo à
+/// direita. Com uma janelinha de 300px só dava para ter um canto.
+///
+/// A janela não rouba clique (`set_ignore_cursor_events`) nem foco, então ser
+/// grande não muda nada para quem está jogando.
 pub fn prepare(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(LABEL) {
-        let _ = window.set_ignore_cursor_events(true);
-    }
+    let Some(window) = app.get_webview_window(LABEL) else {
+        return;
+    };
+
+    let _ = window.set_ignore_cursor_events(true);
+    fit_to_screen(&window);
+}
+
+/// Cola a janela na tela em que ela está.
+///
+/// Falhar aqui não é motivo para não ter overlay: sem monitor conhecido, fica
+/// o tamanho do `tauri.conf.json` e o cartão continua aparecendo.
+fn fit_to_screen(window: &tauri::WebviewWindow) {
+    let monitor = match window.current_monitor() {
+        Ok(Some(monitor)) => monitor,
+        _ => match window.primary_monitor() {
+            Ok(Some(monitor)) => monitor,
+            _ => {
+                tracing::debug!("overlay: sem monitor conhecido, mantendo o tamanho padrão");
+                return;
+            }
+        },
+    };
+
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+        monitor.position().x,
+        monitor.position().y,
+    ));
+    let _ = window.set_size(*monitor.size());
 }
 
 pub fn toggle_visible(app: &AppHandle) {
@@ -44,6 +78,10 @@ pub fn toggle_visible(app: &AppHandle) {
             let _ = window.hide();
         }
         _ => {
+            // A resolução pode ter mudado desde a abertura do app — alt-tab
+            // entre monitores, troca de resolução para jogar. Reencaixa antes
+            // de aparecer, senão os relógios caem fora do minimapa.
+            fit_to_screen(&window);
             let _ = window.show();
             // Mostrar não pode roubar o foco do jogo.
             let _ = window.set_always_on_top(true);

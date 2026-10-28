@@ -12,6 +12,8 @@ import type {
   OverlaySection,
   SkirmishFocus,
 } from "./lib/types";
+import { MAPA_PADRAO } from "./lib/types";
+import MapaTimers from "./components/MapaTimers";
 import "./overlay.css";
 
 const EVENT_LIVE = "presage://live";
@@ -35,7 +37,10 @@ function Overlay() {
   const [briga, setBriga] = useState<SkirmishFocus | null>(null);
   // Nada escondido até o backend responder: o atraso de uma consulta não pode
   // piscar um overlay vazio na frente de quem está jogando.
-  const [prefs, setPrefs] = useState<OverlayPrefs>({ hidden: [] });
+  const [prefs, setPrefs] = useState<OverlayPrefs>({
+    hidden: [],
+    map: MAPA_PADRAO,
+  });
 
   const mostra = (secao: OverlaySection) => !prefs.hidden.includes(secao);
 
@@ -95,12 +100,19 @@ function Overlay() {
     return null;
   }
 
-  const soon = snapshot.timeline.upcoming.slice(0, 3);
   const top = snapshot.priority.lanes[0];
   const fisico = context ? Math.round(context.incomingPhysicalShare * 100) : null;
 
+  // A janela cobre a tela inteira para poder ancorar em dois cantos: o cartão
+  // em cima à esquerda, os relógios em cima do minimapa. Nada aqui pega
+  // clique — a janela inteira é atravessável.
   return (
-    <div className="hud">
+    <div className="hud-tela">
+      {mostra("objectives") && (
+        <MapaTimers upcoming={snapshot.timeline.upcoming} map={prefs.map} />
+      )}
+
+      <div className="hud">
       <div className="hud-head">
         <span className="hud-brand">PRESAGE</span>
         <span className="hud-clock">{clock(snapshot.timeline.gameTime)}</span>
@@ -140,16 +152,8 @@ function Overlay() {
         </div>
       )}
 
-      {mostra("objectives") &&
-        soon.map((spawn) => (
-          <div className="hud-row" key={spawn.name}>
-            <span className="hud-label">{spawn.name}</span>
-            <span className={`hud-value ${spawn.secondsLeft <= 60 ? "hot" : ""}`}>
-              {spawn.secondsLeft <= 0 ? "pronto" : clock(spawn.secondsLeft)}
-            </span>
-            {!spawn.observed && <span className="hud-tag">est</span>}
-          </div>
-        ))}
+      {/* Os objetivos não ficam aqui: eles ficam em cima do minimapa, que é
+          para onde os olhos já vão. Ver `MapaTimers`. */}
 
       {top && mostra("priority") && (
         <div className="hud-block">
@@ -203,6 +207,7 @@ function Overlay() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

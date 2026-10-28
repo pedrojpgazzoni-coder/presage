@@ -183,11 +183,25 @@ export interface SkirmishFocus {
   because: string;
 }
 
+/** Por onde este jogo é ganho. */
+export interface WinCondition {
+  headline: string;
+  /** "early game" | "mid game" | "late game" */
+  window: string;
+  /** Quão marcada é a janela, de 0 a 1. */
+  confidence: number;
+  play: string[];
+  avoid: string[];
+  /** Falso enquanto nada vier de partidas reais. */
+  fromData: boolean;
+}
+
 export interface LaneReport {
   /** Os cinco contra os cinco. null enquanto os lados têm tamanhos diferentes. */
   team: TeamOutlook | null;
   lanes: LaneOutlook[];
   skirmishes: Skirmish[];
+  winCondition: WinCondition | null;
   source: "draft" | "partida";
   /** As rotas inimigas foram presumidas pela ordem do draft. */
   rolesAssumed: boolean;
@@ -290,6 +304,48 @@ export interface RunePlan {
   fromData: boolean;
 }
 
+export interface Rank {
+  queue: string;
+  tier: string;
+  division: string;
+  points: number;
+  wins: number;
+  losses: number;
+}
+
+export interface PastGame {
+  gameId: number;
+  /** Milissegundos desde a época. */
+  playedAt: number;
+  duration: number;
+  queueId: number;
+  championId: number;
+  lane: string;
+  win: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  gold: number;
+  /** Dano a campeões. O histórico tem; a API ao vivo não. */
+  damage: number;
+  damageTaken: number;
+  vision: number;
+  level: number;
+}
+
+export interface Profile {
+  riotId: string;
+  level: number;
+  rank: Rank | null;
+  matches: PastGame[];
+}
+
+/** O que a primeira execução perguntou e já foi respondido. */
+export interface Onboarding {
+  done: boolean;
+}
+
 export type OverlaySection =
   | "gold"
   | "damage"
@@ -300,8 +356,26 @@ export type OverlaySection =
 
 /** Guarda o que está **escondido**, não o que está ligado: assim uma seção
  *  nova nasce visível para quem já tem configuração salva. */
+/** Onde os relógios caem em cima do minimapa do jogo. */
+export interface MapTimers {
+  /** Lado do quadrado do minimapa, em pixels. */
+  size: number;
+  right: number;
+  bottom: number;
+}
+
+/** Os mesmos limites do backend, para o slider não gerar valor recortado. */
+export const MAPA_LIMITES = {
+  minSize: 180,
+  maxSize: 560,
+  maxOffset: 400,
+} as const;
+
+export const MAPA_PADRAO: MapTimers = { size: 330, right: 14, bottom: 14 };
+
 export interface OverlayPrefs {
   hidden: OverlaySection[];
+  map: MapTimers;
 }
 
 export const OVERLAY_SECTIONS: {
